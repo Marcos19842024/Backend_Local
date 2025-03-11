@@ -16,12 +16,12 @@ class Ws implements LeadExternal {
         clientId: this.id
       }),
       puppeteer: {
-        //executablePath: "/usr/bin/chromium-browser",
+        executablePath: "/usr/bin/chromium-browser",
         headless: true,
         args: [
           "--disable-setuid-sandbox",
           "--unhandled-rejections=strict",
-          //"--no-sandbox",
+          "--no-sandbox",
         ],
       }
     });
