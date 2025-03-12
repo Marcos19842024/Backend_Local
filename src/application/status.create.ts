@@ -6,8 +6,8 @@ export class StatusCreate {
     this.leadStatus = repositories;
   }
 
-  public async getStatus(client: string) {
-    const responseStatus = await this.leadStatus.getSts(client);//checar status de la sesion de ws
+  public async getStatus(client: string,clientid: string) {
+    const responseStatus = await this.leadStatus.getSts(client,clientid);//checar status de la sesion de ws
     return responseStatus;
   }
 }

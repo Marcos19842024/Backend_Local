@@ -6,14 +6,15 @@ import LeadExternal from "../../domain/lead-external.repository";
  * Extendemos los super poderes de whatsapp-web
  */
 class Ws implements LeadExternal {
-  private id = process.env.ID;
+  private user = process.env.USER;
+  private userid = process.env.USERID;
   private status = false;
   private cliente: Client;
 
   constructor() {
     this.cliente = new Client({
       authStrategy: new LocalAuth({
-        clientId: this.id
+        clientId: this.user
       }),
       puppeteer: {
         executablePath: "/usr/bin/chromium-browser",
@@ -30,7 +31,7 @@ class Ws implements LeadExternal {
 
     this.cliente.on("ready", () => {
       this.status = true;
-      console.log("LOGIN SUCCESS");
+      console.log("LOGIN SUCCESS",this.user,this.userid);
     });
 
     this.cliente.on("auth_failure", () => {
@@ -48,15 +49,18 @@ class Ws implements LeadExternal {
    * @param lead
    * @returns
    */
-  async sendMsg(lead: { client: string; message: string; phone: string; pathtofiles: Array<string> }): Promise<any> {
+  async sendMsg(lead: { client: string; clientid: string; message: string; phone: string; pathtofiles: Array<string> }): Promise<any> {
     try {
       const url = process.env.URL + 'media/';
-      const { client, message, phone, pathtofiles } = lead;
+      const { client, clientid, message, phone, pathtofiles } = lead;
       var result;
-      if(client !== this.id) {
-        return Promise.resolve({ error: `Acces denied, ${client} is not registered` });
+      if(client !== this.user) {
+        return Promise.resolve({ error: `Acceso denegado, ${client} no está registrado` });
       }
-      if(!`${this.status}`) return Promise.resolve({ error: `WAIT LOGIN TO ${client}` });
+      if(clientid !== this.userid) {
+        return Promise.resolve({ error: `Acceso denegado, ${clientid} no está registrado` });
+      }
+      if(!`${this.status}`) return Promise.resolve({ error: `Esperando la conexión con ${client}` });
       if(pathtofiles?.length > 0) {
         let pathtofile = url + pathtofiles[0];
         let filename = pathtofiles[0];
@@ -77,13 +81,21 @@ class Ws implements LeadExternal {
     }
   }
 
-  async getSts(client: string): Promise<any> {
+  async getSts(client: string, clientid: string): Promise<any> {
     let data;
-    if(client !== this.id) {
+    if(client !== this.user) {
       data = {
         err: true,
         status: "500",
-        statusText: `Acces denied, ${client} is not registered`
+        statusText: `Acceso denegado, ${client} no está registrado`
+      }
+      return Promise.resolve(data);
+    }
+    if(clientid !== this.userid) {
+      data = {
+        err: true,
+        status: "500",
+        statusText: `Acceso denegado, ${clientid} no está registrado`
       }
       return Promise.resolve(data);
     }
@@ -91,13 +103,13 @@ class Ws implements LeadExternal {
       data = {
         err: false,
         status: "400",
-        statusTex: `Connected to ${client}`
+        statusTex: `Conectado con ${client}`
       }
     } else {
       data = {
         err: true,
         status: "500",
-        statusText: `${client} Offline`
+        statusText: `${client} Desconectado`
       }
     }
     return Promise.resolve(data);

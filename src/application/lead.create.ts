@@ -9,16 +9,18 @@ export class LeadCreate {
 
   public async sendMessage({
     client,
+    clientid,
     message,
     phone,
     pathtofiles,
   }: {
     client: string;
+    clientid: string;
     message: string;
     phone: string;
     pathtofiles: Array<string>;
   }) {
-    const responseExSave = await this.leadExternal.sendMsg({ client, message, phone, pathtofiles });//enviar a ws
+    const responseExSave = await this.leadExternal.sendMsg({ client, clientid, message, phone, pathtofiles });//enviar a ws
     return responseExSave;
   }
 }

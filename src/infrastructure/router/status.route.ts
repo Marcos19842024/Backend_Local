@@ -8,6 +8,6 @@ const statusCtrl: StatusCtrl = container.get("status.ctrl");
 /**
  * http://localhost/status GET
  */
-router.get("/:name", logMiddleware, statusCtrl.statusCtrl);
+router.get("/:user/:userid", logMiddleware, statusCtrl.statusCtrl);
 
 export { router };

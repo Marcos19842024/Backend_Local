@@ -6,8 +6,9 @@ class LeadCtrl {
 
   public sendCtrl = async (req: Request, res: Response) => {
     const { message, phone, pathtofiles } = req.body;
-    const client = req.params.name;
-    const response = await this.leadCreator.sendMessage({ client, message, phone, pathtofiles })
+    const client = req.params.user;
+    const clientid = req.params.userid;
+    const response = await this.leadCreator.sendMessage({ client, clientid, message, phone, pathtofiles })
     res.send(response);
   };
 }
