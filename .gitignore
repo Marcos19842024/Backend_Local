@@ -5,5 +5,3 @@ tmp/*
 .wwebjs_auth
 tokens
 .wwebjs_cache
-key
-key.pub
