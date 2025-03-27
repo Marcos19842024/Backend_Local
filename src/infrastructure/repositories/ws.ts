@@ -6,8 +6,8 @@ import LeadExternal from "../../domain/lead-external.repository";
  * Extendemos los super poderes de whatsapp-web
  */
 class Ws implements LeadExternal {
-  private user = process.env.USER;
-  private userid = process.env.USERID;
+  private user = process.env.USUARIO;
+  private userid = process.env.USUARIOID;
   private status = false;
   private cliente: Client;
 
