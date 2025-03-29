@@ -103,7 +103,7 @@ class Ws implements LeadExternal {
       data = {
         err: false,
         status: "400",
-        statusTex: `Conectado con ${client}`
+        statusText: `Conectado con ${client}`
       }
     } else {
       data = {
