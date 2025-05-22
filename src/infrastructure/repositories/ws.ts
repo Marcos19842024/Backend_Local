@@ -17,8 +17,8 @@ class Ws implements LeadExternal {
         clientId: this.user
       }),
       puppeteer: {
-        executablePath: "/usr/bin/chromium-browser",
-        headless: true,
+        //executablePath: "/usr/bin/chromium-browser",
+        //headless: true,
         args: [
           "--disable-setuid-sandbox",
           "--unhandled-rejections=strict",
@@ -55,9 +55,11 @@ class Ws implements LeadExternal {
       const { client, clientid, message, phone, pathtofiles } = lead;
       var result;
       if(client !== this.user) {
+        console.log(`Acceso denegado, ${client} no está registrado`);
         return Promise.resolve({ error: `Acceso denegado, ${client} no está registrado` });
       }
       if(clientid !== this.userid) {
+        console.log(`Acceso denegado, ${clientid} no está registrado`);
         return Promise.resolve({ error: `Acceso denegado, ${clientid} no está registrado` });
       }
       if(!`${this.status}`) return Promise.resolve({ error: `Esperando la conexión con ${client}` });
@@ -89,6 +91,7 @@ class Ws implements LeadExternal {
         status: "500",
         statusText: `Acceso denegado, ${client} no está registrado`
       }
+      console.log(`Acceso denegado, ${client} no está registrado`);
       return Promise.resolve(data);
     }
     if(clientid !== this.userid) {
@@ -97,6 +100,7 @@ class Ws implements LeadExternal {
         status: "500",
         statusText: `Acceso denegado, ${clientid} no está registrado`
       }
+      console.log(`Acceso denegado, ${clientid} no está registrado`);
       return Promise.resolve(data);
     }
     if(this.status) {
@@ -112,6 +116,7 @@ class Ws implements LeadExternal {
         statusText: `${client} Desconectado`
       }
     }
+    console.log(`Status: ${data.statusText}`);
     return Promise.resolve(data);
   }
 
