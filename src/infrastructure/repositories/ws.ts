@@ -18,11 +18,11 @@ class Ws implements LeadExternal {
       }),
       puppeteer: {
         //executablePath: "/usr/bin/chromium-browser",
-        //headless: true,
+        headless: true,
         args: [
           "--disable-setuid-sandbox",
           "--unhandled-rejections=strict",
-          "--no-sandbox",
+          //"--no-sandbox",
         ],
       }
     });
