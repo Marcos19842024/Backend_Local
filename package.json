@@ -1,14 +1,15 @@
 {
-  "name": "backend",
+   "name": "backend",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon ./src/app.ts",
-    "start": "node ./dist/app.js",
-    "pm2": "pm2 start ./dist/app.js",
-    "build": "tsc -p  ."
+    "start": "pm2 start ./dist/app.js",
+    "app": "node ./dist/app.js",
+    "build": "tsc -p  .",
+    "prod:start": "pm2-runtime app.js"
   },
   "homepage": "./",
   "keywords": [],
