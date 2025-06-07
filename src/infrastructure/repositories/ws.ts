@@ -17,12 +17,12 @@ class Ws implements LeadExternal {
         clientId: this.user
       }),
       puppeteer: {
-        //executablePath: "/usr/bin/chromium-browser",
+        executablePath: "/usr/bin/chromium-browser",
         headless: true,
         args: [
           "--disable-setuid-sandbox",
           "--unhandled-rejections=strict",
-          //"--no-sandbox",
+          "--no-sandbox",
         ],
       }
     });
@@ -49,7 +49,8 @@ class Ws implements LeadExternal {
    * @param lead
    * @returns
    */
-  async sendMsg(lead: { client: string; clientid: string; message: string; phone: string; pathtofiles: Array<string> }): Promise<any> {
+
+   async sendMsg(lead: { client: string; clientid: string; message: string; phone: string; pathtofiles: Array<string> }): Promise<any> {
     try {
       const url = process.env.URL + 'media/';
       const { client, clientid, message, phone, pathtofiles } = lead;
@@ -116,7 +117,7 @@ class Ws implements LeadExternal {
         statusText: `${client} Desconectado`
       }
     }
-    console.log(`Status: ${data.statusText}`);
+    console.log(data.statusText);
     return Promise.resolve(data);
   }
 
@@ -127,6 +128,7 @@ class Ws implements LeadExternal {
     console.log(`⚡ Escanea el codigo QR que esta en la carepta tmp⚡`);
     console.log(`⚡ Recuerda que el QR se actualiza cada minuto ⚡'`);
   };
+
 }
 
 export default Ws;
