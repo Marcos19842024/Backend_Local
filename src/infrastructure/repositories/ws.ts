@@ -50,7 +50,7 @@ class Ws implements LeadExternal {
    * @returns
    */
 
-   async sendMsg(lead: { client: string; clientid: string; message: string; phone: string; pathtofiles: Array<string> }): Promise<any> {
+  async sendMsg(lead: { client: string; clientid: string; message: Array<string>; phone: string; pathtofiles: Array<string> }): Promise<any> {
     try {
       const url = process.env.URL + 'media/';
       const { client, clientid, message, phone, pathtofiles } = lead;
@@ -63,7 +63,7 @@ class Ws implements LeadExternal {
         console.log(`Acceso denegado, ${clientid} no está registrado`);
         return Promise.resolve({ error: `Acceso denegado, ${clientid} no está registrado` });
       }
-      if(!`${this.status}`) return Promise.resolve({ error: `Esperando la conexión con ${client}` });
+      if(!this.status) return Promise.resolve({ error: `Esperando la conexión con ${client}` });
       if(pathtofiles?.length > 0) {
         let pathtofile = url + pathtofiles[0];
         let filename = pathtofiles[0];
@@ -76,8 +76,15 @@ class Ws implements LeadExternal {
           };
         }
       }
-      result = await this.cliente.sendMessage(`${phone}@c.us`, message);
-      const response = { id: result.id.id };
+      if(message?.length > 0) {
+        result = await this.cliente.sendMessage(`${phone}@c.us`, message[0]);
+        if(message.length > 1) {
+          for(let i = 1; i < message.length; i++) {
+            result = await this.cliente.sendMessage(`${phone}@c.us`, message[i]);
+          };
+        }
+      }
+      const response = result && result.id && result.id.id ? { id: result.id.id } : { id: null };
       return Promise.resolve(response);
     } catch (e: any) {
       return Promise.resolve({ error: e.message });

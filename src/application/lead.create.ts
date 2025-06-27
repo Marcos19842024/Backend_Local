@@ -16,7 +16,7 @@ export class LeadCreate {
   }: {
     client: string;
     clientid: string;
-    message: string;
+    message: Array<string>;
     phone: string;
     pathtofiles: Array<string>;
   }) {
