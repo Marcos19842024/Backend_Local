@@ -57,13 +57,28 @@ class Ws implements LeadExternal {
       var result;
       if(client !== this.user) {
         console.log(`Acceso denegado, ${client} no está registrado`);
-        return Promise.resolve({ error: `Acceso denegado, ${client} no está registrado` });
+        return Promise.resolve({
+          err: true,
+          status: "500",
+          statusText: `Acceso denegado, ${client} no está registrado`
+        })
       }
       if(clientid !== this.userid) {
         console.log(`Acceso denegado, ${clientid} no está registrado`);
-        return Promise.resolve({ error: `Acceso denegado, ${clientid} no está registrado` });
+        return Promise.resolve({
+          err: true,
+          status: "500",
+          statusText: `Acceso denegado, ${clientid} no está registrado`
+        })
       }
-      if(!this.status) return Promise.resolve({ error: `Esperando la conexión con ${client}` });
+      if(!this.status) {
+        console.log(`Esperando la conexión con ${client}`);
+        return Promise.resolve({
+          err: true,
+          status: "500",
+          statusText: `Esperando la conexión con ${client}`
+        })
+      }
       if(pathtofiles?.length > 0) {
         let pathtofile = url + pathtofiles[0];
         let filename = pathtofiles[0];
