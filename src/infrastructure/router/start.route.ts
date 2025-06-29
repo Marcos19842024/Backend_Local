@@ -7,7 +7,7 @@ const router: Router = Router();
 /**
  * http://localhost/start POST
  */
-router.post("/run-script", logMiddleware, (req, res) => {
+router.post("/", logMiddleware, (req, res) => {
   exec('sh start.sh', (error, stdout, stderr) => {
     if (error) {
       console.error(`Error: ${error.message}`);
