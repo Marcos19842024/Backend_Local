@@ -49,7 +49,7 @@ class Ws implements LeadExternal {
    * @param lead
    * @returns
    */
-  async getContact(): Promise<any> {
+  async getContactList(): Promise<any> {
     if(!this.status) {
       console.log(`Esperando la conexión con el cliente`);
       return Promise.resolve({
@@ -60,10 +60,6 @@ class Ws implements LeadExternal {
     }
     try {
       const contacts = await this.cliente.getContacts();
-      console.log('Lista de contactos:');
-      contacts.forEach(contact => {
-        console.log(`- Nombre: ${contact.name}, Número: ${contact.number}`);
-      });
       return Promise.resolve({
         err: false,
         status: "400",
