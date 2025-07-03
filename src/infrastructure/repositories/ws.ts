@@ -49,6 +49,27 @@ class Ws implements LeadExternal {
    * @param lead
    * @returns
    */
+  async getContact(){
+    try {
+        const contacts = await this.cliente.getContacts();
+        console.log('Lista de contactos:');
+        contacts.forEach(contact => {
+          console.log(`- Nombre: ${contact.name}, Número: ${contact.number}`);
+        });
+        return Promise.resolve({
+          err: false,
+          status: "400",
+          statusText: contacts,
+        })
+    } catch (error) {
+      console.error('Error al obtener los contactos:', error);
+      return Promise.resolve({
+        err: true,
+        status: "500",
+        statusText: `Error al obtener los contactos: ${error}`
+      })
+    }
+  }
 
   async sendMsg(lead: { client: string; clientid: string; message: Array<string>; phone: string; pathtofiles: Array<string> }): Promise<any> {
     try {
