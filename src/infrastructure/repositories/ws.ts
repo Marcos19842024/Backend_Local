@@ -75,59 +75,61 @@ class Ws implements LeadExternal {
     }
   }
 
-  async sendMsg(lead: { client: string; clientid: string; message: Array<string>; phone: string; pathtofiles: Array<string> }): Promise<any> {
+  async sendMsg(lead: {
+    client: string;
+    clientid: string;
+    message: string[];
+    phone: string;
+    pathtofiles: string[];
+  }): Promise<any> {
     try {
       const url = process.env.URL + 'media/';
       const { client, clientid, message, phone, pathtofiles } = lead;
-      var result;
-      if(client !== this.user) {
-        console.log(`Acceso denegado, ${client} no está registrado`);
-        return Promise.resolve({
-          err: true,
-          status: "500",
-          statusText: `Acceso denegado, ${client} no está registrado`
-        })
+      // Validaciones de seguridad
+      if (client !== this.user || clientid !== this.userid) {
+        const errorText = client !== this.user
+          ? `Acceso denegado, ${client} no está registrado`
+          : `Acceso denegado, ${clientid} no está registrado`;
+        console.log(errorText);
+        return { err: true, status: "500", statusText: errorText };
       }
-      if(clientid !== this.userid) {
-        console.log(`Acceso denegado, ${clientid} no está registrado`);
-        return Promise.resolve({
-          err: true,
-          status: "500",
-          statusText: `Acceso denegado, ${clientid} no está registrado`
-        })
+      // Estado de conexión
+      if (!this.status) {
+        const statusText = `Esperando la conexión con ${client}`;
+        console.log(statusText);
+        return { err: true, status: "500", statusText };
       }
-      if(!this.status) {
-        console.log(`Esperando la conexión con ${client}`);
-        return Promise.resolve({
-          err: true,
-          status: "500",
-          statusText: `Esperando la conexión con ${client}`
-        })
+      const phoneId = `${phone}@c.us`;
+      const tasks: Promise<any>[] = [];
+      // Enviar archivos multimedia (en paralelo)
+      if (pathtofiles.length > 0) {
+        const fileTasks = pathtofiles.map(async (file) => {
+          const media = await MessageMedia.fromUrl(url + file, { filename: file });
+          return this.cliente.sendMessage(phoneId, media);
+        });
+        tasks.push(...fileTasks);
       }
-      if(pathtofiles?.length > 0) {
-        let pathtofile = url + pathtofiles[0];
-        let filename = pathtofiles[0];
-        result = await this.cliente.sendMessage(`${phone}@c.us`, await MessageMedia.fromUrl(pathtofile,{filename}));
-        if(pathtofiles.length > 1) {
-          for(let i = 1; i < pathtofiles.length; i++) {
-            let pathtofile = url + pathtofiles[i];
-            let filename = pathtofiles[i];
-            result = await this.cliente.sendMessage(`${phone}@c.us`, await MessageMedia.fromUrl(pathtofile,{filename}));
-          };
+      // Enviar mensajes de texto (en paralelo)
+      if (message.length > 0) {
+        const messageTasks = message.map((msg) =>
+          this.cliente.sendMessage(phoneId, msg)
+        );
+        tasks.push(...messageTasks);
+      }
+      // Ejecutar todas las tareas en paralelo
+      const results = await Promise.allSettled(tasks);
+      // Log o análisis de resultados (opcional)
+      results.forEach((res, i) => {
+        if (res.status === 'fulfilled') {
+          console.log(`✅ Mensaje ${i + 1} enviado correctamente`);
+        } else {
+          console.error(`❌ Error en mensaje ${i + 1}`, res.reason);
         }
-      }
-      if(message?.length > 0) {
-        result = await this.cliente.sendMessage(`${phone}@c.us`, message[0]);
-        if(message.length > 1) {
-          for(let i = 1; i < message.length; i++) {
-            result = await this.cliente.sendMessage(`${phone}@c.us`, message[i]);
-          };
-        }
-      }
-      const response = result && result.id && result.id.id ? { id: result.id.id } : { id: null };
-      return Promise.resolve(response);
+      });
+      return { err: false, status: "200", statusText: "Mensajes procesados", results };
     } catch (e: any) {
-      return Promise.resolve({ error: e.message });
+      console.error('❌ Error en sendMsg:', e.message);
+      return { error: e.message };
     }
   }
 
