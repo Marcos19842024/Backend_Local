@@ -17,8 +17,8 @@ class Ws implements LeadExternal {
         clientId: this.user
       }),
       puppeteer: {
-        executablePath: "/usr/bin/chromium-browser",
-        headless: true,
+        //executablePath: "/usr/bin/chromium-browser",
+        //headless: true,
         args: [
           "--disable-setuid-sandbox",
           "--unhandled-rejections=strict",
