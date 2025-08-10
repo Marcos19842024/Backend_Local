@@ -13,7 +13,7 @@ app.use(express.json())
 app.use(express.urlencoded({extended: false, limit: '50mb' }))
 app.use(`/`,routes)
 app.use(history())
-app.use(express.static(path + 'dist/ecommerce/dist/'))
+app.use(express.static(path + 'dist/Ecommerce_Local/dist/'))
 app.use(express.static(path + 'tmp'))
 
 app.listen(port, () => console.log(`Ready...${port}`))
