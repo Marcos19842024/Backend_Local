@@ -2,6 +2,7 @@ import "dotenv/config"
 import express from "express"
 import cors from "cors"
 import routes from "./infrastructure/router"
+import open from "open"
 
 const port = process.env.PORT || 3001
 const path = `${process.cwd()}/`
@@ -17,3 +18,5 @@ app.use(express.static(path + 'dist/Ecommerce_Local/dist/'))
 app.use(express.static(path + 'tmp'))
 
 app.listen(port, () => console.log(`Ready...${port}`))
+
+open(`${process.env.URL}`)
