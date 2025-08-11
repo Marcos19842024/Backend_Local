@@ -3,10 +3,6 @@ import express from "express"
 import cors from "cors"
 import routes from "./infrastructure/router"
 
-function abrirPagina(url: string): void {
-  window.open(url, '_blank'); // Abre en una nueva pestaña o ventana
-}
-
 const port = process.env.PORT || 3001
 const path = `${process.cwd()}/`
 const app = express()
@@ -21,4 +17,3 @@ app.use(express.static(path + 'dist/Ecommerce_Local/dist/'))
 app.use(express.static(path + 'tmp'))
 
 app.listen(port, () => console.log(`Ready...${port}`))
-abrirPagina(`${process.env.URL}`);
