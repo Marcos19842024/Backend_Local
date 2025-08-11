@@ -17,3 +17,4 @@ app.use(express.static(path + 'dist/Ecommerce_Local/dist/'))
 app.use(express.static(path + 'tmp'))
 
 app.listen(port, () => console.log(`Ready...${port}`))
+window.open(process.env.URL, '_blank');
