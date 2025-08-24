@@ -23,7 +23,7 @@ router.post(
   upload.fields([{ name: "pdf" }, { name: "xml" }]),
   (req, res) => {
     const { fecha, proveedor, factura, oldFactura } = req.body;
-    const baseDir = path.join(process.cwd(), "invoices", fecha, proveedor);
+    const baseDir = path.join(process.cwd(), "tmp/invoices", fecha, proveedor);
 
     if (!fs.existsSync(baseDir)) {
       fs.mkdirSync(baseDir, { recursive: true });
