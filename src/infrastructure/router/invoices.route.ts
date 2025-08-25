@@ -59,4 +59,30 @@ router.post(
   }
 );
 
+/**
+ * DELETE /invoices/:fecha/:proveedor/:factura
+ */
+router.delete("/:fecha/:proveedor/:factura", (req, res) => {
+  const { fecha, proveedor, factura } = req.params;
+  const baseDir = path.join(process.cwd(), "tmp/invoices", fecha, proveedor);
+
+  const pdfPath = path.join(baseDir, `${factura}.pdf`);
+  const xmlPath = path.join(baseDir, `${factura}.xml`);
+
+  try {
+    if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+    if (fs.existsSync(xmlPath)) fs.unlinkSync(xmlPath);
+
+    // 🗑️ eliminar carpeta si queda vacía
+    if (fs.existsSync(baseDir) && fs.readdirSync(baseDir).length === 0) {
+      fs.rmdirSync(baseDir, { recursive: true });
+    }
+
+    res.json({ message: "Factura eliminada correctamente" });
+  } catch (error) {
+    console.error("Error al eliminar factura:", error);
+    res.status(500).json({ message: "Error al eliminar la factura" });
+  }
+});
+
 export { router };
