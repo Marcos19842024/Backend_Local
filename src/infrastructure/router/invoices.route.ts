@@ -92,49 +92,62 @@ router.delete("/:fecha/:proveedor/:factura", (req, res) => {
  * http://localhost/invoices GET /download-zip
  * Genera reporte en PDF y lo empaqueta con facturas en un ZIP
  */
-router.get("/", upload.single("pdf"), async (req, res) => {
+router.post("/downloadZip", upload.single("pdf"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).send("No se envió ningún PDF");
-    }
+    if (!req.file) return res.status(400).send("No se envió ningún PDF");
 
-    // Nombre del PDF (si no viene, usamos "reporte.pdf")
-    const pdfName = (req.body.pdfName || "reporte.pdf").replace(/[^a-zA-Z0-9_.-]/g, "");
+    // 1) Tomamos el nombre recibido o un default
+    const raw = (req.body.pdfName ?? "reporte.pdf").toString();
 
-    // 📌 Preparar respuesta ZIP
+    // 2) Normalizamos: quitamos acentos y filtramos caracteres
+    const cleanedBase = raw
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // sin acentos
+      .replace(/[^\w.\- ]/g, "")                         // solo [A-Za-z0-9_ .-]
+      .replace(/\s+/g, " ")                              // colapsa espacios
+      .trim();
+
+    // 3) Aseguramos extensión .pdf
+    const pdfName = cleanedBase.toLowerCase().endsWith(".pdf")
+      ? cleanedBase
+      : `${cleanedBase}.pdf`;
+
+    // 4) Nombre del ZIP
+    const zipName = pdfName.replace(/\.pdf$/i, ".zip");
+
+    // Headers
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename=${pdfName}.zip`);
+    res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
 
     const archive = archiver("zip", { zlib: { level: 9 } });
     archive.pipe(res);
 
-    // 📌 Agregar el reporte.pdf al ZIP en el nivel raíz
-    archive.append(req.file.buffer, { name: `${pdfName}.pdf` });
+    // PDF al nivel raíz del ZIP
+    archive.append(req.file.buffer, { name: pdfName });
 
-    // 📌 Incluir carpetas de facturas organizadas en fecha/proveedor
-    const baseDir = path.join(__dirname, "tmp/invoices");
-    const fechas = fs.readdirSync(baseDir);
+    // Directorio base (ajústalo si tus facturas están en otra ruta)
+    const baseDir = path.join(process.cwd(), "tmp", "invoices");
+    if (!fs.existsSync(baseDir)) {
+      return res.status(400).send("No hay facturas para comprimir");
+    }
 
-    for (const fecha of fechas) {
+    // fecha/proveedor
+    for (const fecha of fs.readdirSync(baseDir)) {
       const fechaPath = path.join(baseDir, fecha);
-      if (fs.statSync(fechaPath).isDirectory()) {
-        const proveedores = fs.readdirSync(fechaPath);
-        for (const proveedor of proveedores) {
-          const proveedorPath = path.join(fechaPath, proveedor);
-          if (fs.statSync(proveedorPath).isDirectory()) {
-            // Añadir la carpeta completa manteniendo estructura fecha/proveedor
-            archive.directory(proveedorPath, `${fecha}/${proveedor}`);
-          }
-        }
+      if (!fs.statSync(fechaPath).isDirectory()) continue;
+
+      for (const proveedor of fs.readdirSync(fechaPath)) {
+        const proveedorPath = path.join(fechaPath, proveedor);
+        if (!fs.statSync(proveedorPath).isDirectory()) continue;
+
+        archive.directory(proveedorPath, `${fecha}/${proveedor}`);
       }
     }
 
-    // 📌 Finalizar
     await archive.finalize();
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     res.status(500).send("Error al generar el ZIP");
   }
 });
 
-export { router };
+export {router};
