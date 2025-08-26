@@ -112,7 +112,7 @@ router.get("/", upload.single("pdf"), async (req, res) => {
     archive.append(req.file.buffer, { name: `${pdfName}.pdf` });
 
     // 📌 Incluir carpetas de facturas organizadas en fecha/proveedor
-    const baseDir = path.join(process.cwd(), "tmp/invoices");
+    const baseDir = path.join(__dirname, "tmp/invoices");
     const fechas = fs.readdirSync(baseDir);
 
     for (const fecha of fechas) {
