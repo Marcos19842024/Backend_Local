@@ -78,6 +78,12 @@ router.delete("/:fecha/:proveedor/:factura", (req, res) => {
       fs.rmdirSync(baseDir, { recursive: true });
     }
 
+    // 🗑️ eliminar carpeta de la fecha si también queda vacía
+    const fechaDir = path.join(process.cwd(), "tmp/invoices", fecha);
+    if (fs.existsSync(fechaDir) && fs.readdirSync(fechaDir).length === 0) {
+      fs.rmdirSync(fechaDir, { recursive: true });
+    }
+
     res.json({ message: "Factura eliminada correctamente" });
   } catch (error) {
     console.error("Error al eliminar factura:", error);
