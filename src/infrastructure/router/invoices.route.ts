@@ -92,45 +92,57 @@ router.delete("/:fecha/:proveedor/:factura", (req, res) => {
  * http://localhost/invoices GET /download-zip
  * Genera reporte en PDF y lo empaqueta con facturas en un ZIP
  */
-router.post("/downloadZip", upload.single("pdf"), async (req, res) => {
+import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+// Configurar transporte de correo
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+router.post("/download&SendMailZip", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).send("No se envió ningún PDF");
 
-    // 1) Tomamos el nombre recibido o un default
+    // Normalización de nombre
     const raw = (req.body.pdfName ?? "reporte.pdf").toString();
-
-    // 2) Normalizamos: quitamos acentos y filtramos caracteres
     const cleanedBase = raw
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")   // sin acentos
-      .replace(/[^\w.\- ]/g, "")                         // solo [A-Za-z0-9_ .-]
-      .replace(/\s+/g, " ")                              // colapsa espacios
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\w.\- ]/g, "")
+      .replace(/\s+/g, " ")
       .trim();
 
-    // 3) Aseguramos extensión .pdf
     const pdfName = cleanedBase.toLowerCase().endsWith(".pdf")
       ? cleanedBase
       : `${cleanedBase}.pdf`;
 
-    // 4) Nombre del ZIP
     const zipName = pdfName.replace(/\.pdf$/i, ".zip");
 
-    // Headers
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
+    // 📦 Ruta temporal para guardar ZIP antes de enviar
+    const tmpZipPath = path.join(process.cwd(), "tmp", zipName);
 
+    // Creamos el ZIP en disco en lugar de enviarlo directo
+    const output = fs.createWriteStream(tmpZipPath);
     const archive = archiver("zip", { zlib: { level: 9 } });
-    archive.pipe(res);
 
-    // PDF al nivel raíz del ZIP
+    archive.pipe(output);
+
+    // Agregamos el PDF recibido
     archive.append(req.file.buffer, { name: pdfName });
 
-    // Directorio base (ajústalo si tus facturas están en otra ruta)
+    // Directorio base de facturas
     const baseDir = path.join(process.cwd(), "tmp", "invoices");
     if (!fs.existsSync(baseDir)) {
       return res.status(400).send("No hay facturas para comprimir");
     }
 
-    // fecha/proveedor
+    // Añadimos carpetas fecha/proveedor al ZIP
     for (const fecha of fs.readdirSync(baseDir)) {
       const fechaPath = path.join(baseDir, fecha);
       if (!fs.statSync(fechaPath).isDirectory()) continue;
@@ -144,10 +156,52 @@ router.post("/downloadZip", upload.single("pdf"), async (req, res) => {
     }
 
     await archive.finalize();
+
+    // 🔔 Cuando se termine de escribir el ZIP, enviamos correo
+    output.on("close", async () => {
+      try {
+        const mailOptions = {
+          from: `"Reportes Web" <${process.env.EMAIL_USER}>`,
+          to: process.env.EMAIL_TO,
+          subject: "📦 Reporte de Gastos (ZIP)",
+          text: "Se adjunta el reporte de gastos comprimido en ZIP.",
+          attachments: [
+            {
+              filename: zipName,
+              path: tmpZipPath,
+              contentType: "application/zip",
+            },
+          ],
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        // 📤 Enviar ZIP al frontend
+        res.download(tmpZipPath, zipName, async (err) => {
+          if (err) {
+            console.error("Error enviando ZIP al frontend:", err);
+          }
+
+          // 🧹 Borramos carpeta invoices después de mandar respuesta
+          fs.rm(baseDir, { recursive: true, force: true }, (err) => {
+            if (err) console.error("Error eliminando invoices:", err);
+            else console.log("Carpeta invoices eliminada ✅");
+          });
+
+          // 🧹 También borramos el zip temporal
+          fs.unlink(tmpZipPath, (err) => {
+            if (err) console.error("Error eliminando ZIP temporal:", err);
+          });
+        });
+      } catch (error) {
+        console.error("Error enviando correo:", error);
+        res.status(500).send("Error enviando el ZIP por correo");
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).send("Error al generar el ZIP");
   }
 });
 
-export {router};
+export { router };
