@@ -1,6 +1,7 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import { logMiddleware } from "../middleware/log";
 
 const router = express.Router();
 
@@ -14,7 +15,7 @@ const saveData = (data: any) =>
     fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2), "utf-8");
 
 // GET: obtener organigrama
-router.get("/", (req, res) => {
+router.get("/", logMiddleware, (req, res) => {
     try {
         const data = readData();
         res.json(data);
@@ -24,7 +25,7 @@ router.get("/", (req, res) => {
 });
 
 // POST: actualizar organigrama
-router.post("/", (req, res) => {
+router.post("/", logMiddleware, (req, res) => {
     try {
         saveData(req.body);
         res.json({ message: "Organigrama guardado correctamente" });
@@ -33,4 +34,4 @@ router.post("/", (req, res) => {
     }
 });
 
-export default router;
+export { router };
