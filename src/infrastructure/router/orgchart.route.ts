@@ -1,11 +1,10 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
-import { logMiddleware } from "../middleware/log";
 
 const router = express.Router();
 
-const DATA_PATH = path.join(__dirname, "orgData.json");
+const DATA_PATH = path.join(process.cwd(), "orgData.json");
 
 // Leer datos del JSON
 const readData = () => JSON.parse(fs.readFileSync(DATA_PATH, "utf-8"));
@@ -14,8 +13,10 @@ const readData = () => JSON.parse(fs.readFileSync(DATA_PATH, "utf-8"));
 const saveData = (data: any) =>
     fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2), "utf-8");
 
-// GET: obtener organigrama
-router.get("/", logMiddleware, (req, res) => {
+/**
+ * http://localhost/orgchart GET
+ */
+router.get("/", (req, res) => {
     try {
         const data = readData();
         res.json(data);
@@ -24,8 +25,10 @@ router.get("/", logMiddleware, (req, res) => {
     }
 });
 
-// POST: actualizar organigrama
-router.post("/", logMiddleware, (req, res) => {
+/**
+ * http://localhost/orgchart POST
+ */
+router.post("/", (req, res) => {
     try {
         saveData(req.body);
         res.json({ message: "Organigrama guardado correctamente" });
