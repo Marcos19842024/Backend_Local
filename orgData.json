@@ -1,0 +1,41 @@
+{
+  "name": "Dirección General",
+  "attributes": { "puesto": "CEO" },
+  "children": [
+    {
+      "name": "Administración",
+      "attributes": { "puesto": "CFO" },
+      "children": [
+        { "name": "Contabilidad", "attributes": { "puesto": "Contador/a" }, "children": [] },
+        { "name": "Compras", "attributes": { "puesto": "Jefe de Compras" }, "children": [] },
+        { "name": "Finanzas", "attributes": { "puesto": "Analista Financiero" }, "children": [] }
+      ]
+    },
+    {
+      "name": "Operaciones",
+      "attributes": { "puesto": "COO" },
+      "children": [
+        { "name": "Logística", "attributes": { "puesto": "Jefe de Logística" }, "children": [] },
+        { "name": "Calidad", "attributes": { "puesto": "QA Manager" }, "children": [] },
+        { "name": "Producción", "attributes": { "puesto": "Supervisor de Producción" }, "children": [] }
+      ]
+    },
+    {
+      "name": "Tecnología",
+      "attributes": { "puesto": "CTO" },
+      "children": [
+        { "name": "Backend", "attributes": { "puesto": "Team Lead Backend" }, "children": [] },
+        { "name": "Frontend", "attributes": { "puesto": "Team Lead Frontend" }, "children": [] },
+        { "name": "Soporte", "attributes": { "puesto": "Helpdesk" }, "children": [] }
+      ]
+    },
+    {
+      "name": "Recursos Humanos",
+      "attributes": { "puesto": "HR Manager" },
+      "children": [
+        { "name": "Reclutamiento", "attributes": { "puesto": "Recruiter" }, "children": [] },
+        { "name": "Capacitación", "attributes": { "puesto": "Trainer" }, "children": [] }
+      ]
+    }
+  ]
+}
