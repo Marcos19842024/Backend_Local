@@ -1,7 +1,7 @@
 import "dotenv/config"
 import express from "express"
 import cors from "cors"
-import routes from "./infrastructure/router"
+import router from "./infrastructure/routes"
 import open from "open"
 
 const port = process.env.PORT || 3001
@@ -12,7 +12,7 @@ var history = require('connect-history-api-fallback')
 app.use(cors())
 app.use(express.json())
 app.use(express.urlencoded({extended: false, limit: '50mb' }))
-app.use(`/`,routes)
+app.use(`/`,router)
 app.use(history())
 app.use(express.static(path + 'dist/Ecommerce_Local/dist/'))
 app.use(express.static(path + 'tmp'))
