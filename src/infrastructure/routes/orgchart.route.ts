@@ -7,21 +7,67 @@ const router = express.Router();
 
 const DATA_PATH = path.join(process.cwd(), "tmp/orgchart/orgData.json");
 
+// Función para leer datos del JSON
+const readData = () => {
+    if (!fs.existsSync(DATA_PATH)) {
+        return { employees: [] };
+    }
+    return JSON.parse(fs.readFileSync(DATA_PATH, "utf-8"));
+};
+
+// Función para guardar datos en JSON
+const saveData = (data: any) => {
+    fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2), "utf-8");
+};
+
+// Función para crear carpeta de empleado
+const createEmployeeFolder = (employeeName: string) => {
+    const employeePath = path.join(process.cwd(), 'tmp/orgchart', 'employees', employeeName);
+    if (!fs.existsSync(employeePath)) {
+        fs.mkdirSync(employeePath, { recursive: true });
+    }
+    return employeePath;
+};
+
+// Función para eliminar carpeta de empleado
+const deleteEmployeeFolder = (employeeName: string) => {
+    const employeePath = path.join(process.cwd(), 'tmp/orgchart', 'employees', employeeName);
+    if (fs.existsSync(employeePath)) {
+        // Eliminar todos los archivos primero
+        const files = fs.readdirSync(employeePath);
+        files.forEach(file => {
+            fs.unlinkSync(path.join(employeePath, file));
+        });
+        // Eliminar la carpeta
+        fs.rmdirSync(employeePath);
+    }
+};
+
+// Función para renombrar carpeta de empleado
+const renameEmployeeFolder = (oldName: string, newName: string) => {
+    const oldPath = path.join(process.cwd(), 'tmp/orgchart', 'employees', oldName);
+    const newPath = path.join(process.cwd(), 'tmp/orgchart', 'employees', newName);
+    
+    if (fs.existsSync(oldPath)) {
+        // Si la nueva carpeta ya existe, eliminarla primero
+        if (fs.existsSync(newPath)) {
+            deleteEmployeeFolder(newName);
+        }
+        // Renombrar la carpeta
+        fs.renameSync(oldPath, newPath);
+        return true;
+    }
+    return false;
+};
+
 // Configuración de multer para la subida de archivos
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Crear carpeta para el empleado si no existe
         const employeeName = req.params.employeeName;
-        const uploadPath = path.join(process.cwd(), 'tmp/orgchart', 'employees', employeeName);
-
-        if (!fs.existsSync(uploadPath)) {
-        fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        
+        const uploadPath = createEmployeeFolder(employeeName);
         cb(null, uploadPath);
     },
     filename: (req, file, cb) => {
-        // Mantener el nombre original del archivo
         cb(null, file.originalname);
     }
 });
@@ -49,13 +95,34 @@ const upload = multer({
     }
 });
 
-// Leer datos del JSON
-const readData = () => JSON.parse(fs.readFileSync(DATA_PATH, "utf-8"));
+/**
+ * Encuentra empleados renombrados comparando datos antiguos y nuevos
+ */
+const findRenamedEmployees = (oldData: any, newData: any) => {
+    const renamed: { oldName: string; newName: string }[] = [];
+    
+    if (!oldData.employees || !newData.employees) return renamed;
 
-// Guardar datos en JSON
-const saveData = (data: any) => fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2), "utf-8");
+    // Buscar por ID u otro identificador único (asumiendo que los empleados tienen ID)
+    const oldEmployeesById: { [key: string]: any } = {};
+    oldData.employees.forEach((emp: any) => {
+        if (emp.id) oldEmployeesById[emp.id] = emp;
+    });
+
+    newData.employees.forEach((newEmp: any) => {
+        if (newEmp.id && oldEmployeesById[newEmp.id]) {
+            const oldEmp = oldEmployeesById[newEmp.id];
+            if (oldEmp.name !== newEmp.name) {
+                renamed.push({ oldName: oldEmp.name, newName: newEmp.name });
+            }
+        }
+    });
+
+    return renamed;
+};
 
 /**
+ * Obtener el organigrama inicialmente
  * http://localhost/orgchart GET
  */
 router.get("/", (req, res) => {
@@ -68,33 +135,132 @@ router.get("/", (req, res) => {
 });
 
 /**
+ * Guarda el organigrama y gestiona carpetas de empleados (función addchild)
  * http://localhost/orgchart POST
  */
 router.post("/", (req, res) => {
     try {
-        saveData(req.body);
-        res.json({ message: "Organigrama guardado correctamente" });
+        const newData = req.body;
+        const oldData = readData();
+        
+        // 1. Detectar empleados renombrados
+        const renamedEmployees = findRenamedEmployees(oldData, newData);
+        
+        // 2. Renombrar carpetas de empleados
+        renamedEmployees.forEach(({ oldName, newName }) => {
+            if (oldName && newName) {
+                renameEmployeeFolder(oldName, newName);
+            }
+        });
+        
+        // 3. Guardar los nuevos datos
+        saveData(newData);
+        
+        // 4. Crear carpetas para nuevos empleados
+        if (newData.employees && Array.isArray(newData.employees)) {
+            newData.employees.forEach((employee: any) => {
+                if (employee.name) {
+                    createEmployeeFolder(employee.name);
+                }
+            });
+        }
+        
+        // 5. Identificar empleados eliminados y borrar sus carpetas
+        let deletedEmployees: string[] = [];
+        if (oldData.employees && Array.isArray(oldData.employees)) {
+            const oldEmployees = oldData.employees.map((emp: any) => emp.name);
+            const newEmployees = newData.employees.map((emp: any) => emp.name);
+            
+            deletedEmployees = oldEmployees.filter((name: string) => 
+                !newEmployees.includes(name) &&
+                !renamedEmployees.some(renamed => renamed.oldName === name)
+            );
+        
+            deletedEmployees.forEach((employeeName: string) => {
+                deleteEmployeeFolder(employeeName);
+            });
+        }
+        
+        res.json({ 
+            message: "Organigrama guardado correctamente",
+            renamed: renamedEmployees.length,
+            created: newData.employees ? newData.employees.length : 0,
+            deleted: deletedEmployees ? deletedEmployees.length : 0
+        });
     } catch (err) {
+        console.error("Error al guardar organigrama:", err);
         res.status(500).json({ error: "No se pudo guardar el archivo" });
     }
 });
 
 /**
- * Subir archivo para un empleado específico
- * http://localhost/orgchart/employees/:employeeName POST
+ * Actualizar empleado específico (función edit)
+ * http://localhost/orgchart/employees/:oldName PUT
  */
-router.post("/employees/:employeeName", upload.single('file'), (req, res) => {
+router.put("/employees/:oldName", (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: "No se proporcionó ningún archivo" });
-        }
+        const oldName = req.params.oldName;
+        const { newName, ...otherData } = req.body;
 
-        res.status(200).send();
+        const data = readData();
+        
+        if (data.employees && Array.isArray(data.employees)) {
+            const employeeIndex = data.employees.findIndex((emp: any) => emp.name === oldName);
+        
+            if (employeeIndex === -1) {
+                return res.status(404).json({ error: "Empleado no encontrado" });
+            }
+
+            // Si cambió el nombre, renombrar la carpeta
+            if (newName && newName !== oldName) {
+                renameEmployeeFolder(oldName, newName);
+                data.employees[employeeIndex].name = newName;
+            }
+
+            // Actualizar otros datos
+            data.employees[employeeIndex] = { ...data.employees[employeeIndex], ...otherData };
+            
+            saveData(data);
+            res.json({ message: "Empleado actualizado correctamente" });
+        } else {
+        res.status(404).json({ error: "No se encontraron empleados" });
+        }
     } catch (error) {
-        console.error("Error al subir archivo:", error);
-        res.status(500).json({ error: "Error al subir el archivo" });
+        console.error("Error al actualizar empleado:", error);
+        res.status(500).json({ error: "Error al actualizar el empleado" });
     }
 });
+
+/**
+ * Eliminar empleado específico y su carpeta (funcion delete)
+ * http://localhost/orgchart/employees/:employeeName DELETE
+ */
+router.delete("/employees/:employeeName", (req, res) => {
+    try {
+        const employeeName = req.params.employeeName;
+        
+        // Eliminar del JSON
+        const data = readData();
+        if (data.employees && Array.isArray(data.employees)) {
+            data.employees = data.employees.filter((emp: any) => emp.name !== employeeName);
+            saveData(data);
+        }
+        
+        // Eliminar carpeta del empleado
+        deleteEmployeeFolder(employeeName);
+        
+        res.status(200).json({ message: "Empleado eliminado correctamente" });
+    } catch (error) {
+        console.error("Error al eliminar empleado:", error);
+        res.status(500).json({ error: "Error al eliminar el empleado" });
+    }
+});
+
+/************************************
+ * **********************************
+ * Estas rutas son para el FileViewer
+ * **********************************
+ * *********************************/
 
 /**
  * Obtener archivos de un empleado específico
@@ -125,6 +291,23 @@ router.get("/employees/:employeeName", (req, res) => {
     } catch (error) {
         console.error("Error al obtener archivos:", error);
         res.status(500).json({ error: "Error al obtener los archivos" });
+    }
+});
+
+/**
+ * Subir archivo para un empleado específico
+ * http://localhost/orgchart/employees/:employeeName POST
+ */
+router.post("/employees/:employeeName", upload.single('file'), (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "No se proporcionó ningún archivo" });
+        }
+
+        res.status(200).send();
+    } catch (error) {
+        console.error("Error al subir archivo:", error);
+        res.status(500).json({ error: "Error al subir el archivo" });
     }
 });
 
