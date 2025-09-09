@@ -25,6 +25,7 @@ const createEmployeeFolder = (employeeName: string) => {
     const employeePath = path.join(process.cwd(), 'tmp/orgchart', 'employees', employeeName);
     if (!fs.existsSync(employeePath)) {
         fs.mkdirSync(employeePath, { recursive: true });
+        console.log("Se creó la carpeta ", employeeName)
     }
     return employeePath;
 };
@@ -40,6 +41,7 @@ const deleteEmployeeFolder = (employeeName: string) => {
         });
         // Eliminar la carpeta
         fs.rmdirSync(employeePath);
+        console.log("Se eliminó le empleado ", employeeName)
     }
 };
 
@@ -55,6 +57,7 @@ const renameEmployeeFolder = (oldName: string, newName: string) => {
         }
         // Renombrar la carpeta
         fs.renameSync(oldPath, newPath);
+        console.log("Se cambió ", oldName, "por ", newName)
         return true;
     }
     return false;
@@ -129,8 +132,10 @@ router.get("/", (req, res) => {
     try {
         const data = readData();
         res.json(data);
+        console.log("Lista de empleados cargada")
     } catch (err) {
         res.status(500).json({ error: "No se pudo leer el archivo" });
+        console.log("No se pudo leer el archivo")
     }
 });
 
@@ -208,6 +213,7 @@ router.put("/employees/:oldName", (req, res) => {
             const employeeIndex = data.employees.findIndex((emp: any) => emp.name === oldName);
         
             if (employeeIndex === -1) {
+                console.log("Empleado no encontrado")
                 return res.status(404).json({ error: "Empleado no encontrado" });
             }
 
