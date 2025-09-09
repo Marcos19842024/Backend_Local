@@ -192,6 +192,10 @@ router.post("/", (req, res) => {
             created: newData.employees ? newData.employees.length : 0,
             deleted: deletedEmployees ? deletedEmployees.length : 0
         });
+        console.log("Organigrama guardado correctamente",
+            "renamed: ", renamedEmployees.length,
+            "created: ", newData.employees ? newData.employees.length : 0,
+            "deleted: ", deletedEmployees ? deletedEmployees.length : 0)
     } catch (err) {
         console.error("Error al guardar organigrama:", err);
         res.status(500).json({ error: "No se pudo guardar el archivo" });
@@ -228,6 +232,7 @@ router.put("/employees/:oldName", (req, res) => {
             
             saveData(data);
             res.json({ message: "Empleado actualizado correctamente" });
+            console.log("Empleado actualizado correctamente");
         } else {
         res.status(404).json({ error: "No se encontraron empleados" });
         }
@@ -254,7 +259,7 @@ router.delete("/employees/:employeeName", (req, res) => {
         
         // Eliminar carpeta del empleado
         deleteEmployeeFolder(employeeName);
-        
+        console.log("Empleado eliminado correctamente");
         res.status(200).json({ message: "Empleado eliminado correctamente" });
     } catch (error) {
         console.error("Error al eliminar empleado:", error);
