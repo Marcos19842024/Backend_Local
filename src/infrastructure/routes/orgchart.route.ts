@@ -99,20 +99,45 @@ const upload = multer({
 });
 
 /**
+ * Función recursiva para obtener todos los empleados de la estructura jerárquica
+ */
+const getAllEmployees = (node: any): any[] => {
+    const employees: any[] = [];
+    
+    if (node && node.name) {
+        employees.push({
+            id: node.id,
+            name: node.name,
+            alias: node.alias
+        });
+    }
+    
+    if (node.children && Array.isArray(node.children)) {
+        node.children.forEach((child: any) => {
+            employees.push(...getAllEmployees(child));
+        });
+    }
+    
+    return employees;
+};
+
+/**
  * Encuentra empleados renombrados comparando datos antiguos y nuevos
  */
 const findRenamedEmployees = (oldData: any, newData: any) => {
     const renamed: { oldName: string; newName: string }[] = [];
     
-    if (!oldData.employees || !newData.employees) return renamed;
-
-    // Buscar por ID u otro identificador único (asumiendo que los empleados tienen ID)
+    // Obtener todos los empleados de ambas estructuras
+    const oldEmployees = getAllEmployees(oldData);
+    const newEmployees = getAllEmployees(newData);
+    
+    // Buscar por ID
     const oldEmployeesById: { [key: string]: any } = {};
-    oldData.employees.forEach((emp: any) => {
+    oldEmployees.forEach((emp: any) => {
         if (emp.id) oldEmployeesById[emp.id] = emp;
     });
 
-    newData.employees.forEach((newEmp: any) => {
+    newEmployees.forEach((newEmp: any) => {
         if (newEmp.id && oldEmployeesById[newEmp.id]) {
             const oldEmp = oldEmployeesById[newEmp.id];
             if (oldEmp.name !== newEmp.name) {
@@ -160,42 +185,46 @@ router.post("/", (req, res) => {
         
         // 3. Guardar los nuevos datos
         saveData(newData);
+    
+        // 4. Obtener todos los empleados de la nueva estructura
+        const allNewEmployees = getAllEmployees(newData);
+        const allOldEmployees = getAllEmployees(oldData);
         
-        // 4. Crear carpetas para nuevos empleados
-        if (newData.employees && Array.isArray(newData.employees)) {
-            newData.employees.forEach((employee: any) => {
-                if (employee.name) {
-                    createEmployeeFolder(employee.name);
-                }
-            });
-        }
+        // 5. Crear carpetas para nuevos empleados
+        const newEmployees = allNewEmployees.filter(newEmp => 
+            !allOldEmployees.some(oldEmp => oldEmp.id === newEmp.id)
+        );
         
-        // 5. Identificar empleados eliminados y borrar sus carpetas
-        let deletedEmployees: string[] = [];
-        if (oldData.employees && Array.isArray(oldData.employees)) {
-            const oldEmployees = oldData.employees.map((emp: any) => emp.name);
-            const newEmployees = newData.employees.map((emp: any) => emp.name);
-            
-            deletedEmployees = oldEmployees.filter((name: string) => 
-                !newEmployees.includes(name) &&
-                !renamedEmployees.some(renamed => renamed.oldName === name)
-            );
+        newEmployees.forEach(employee => {
+            if (employee.name) {
+                createEmployeeFolder(employee.name);
+            }
+        });
         
-            deletedEmployees.forEach((employeeName: string) => {
-                deleteEmployeeFolder(employeeName);
-            });
-        }
+        // 6. Identificar empleados eliminados y borrar sus carpetas
+        const deletedEmployees = allOldEmployees.filter(oldEmp => 
+            !allNewEmployees.some(newEmp => newEmp.id === oldEmp.id) &&
+            !renamedEmployees.some(renamed => renamed.oldName === oldEmp.name)
+        );
+        
+        deletedEmployees.forEach(employee => {
+            if (employee.name) {
+                deleteEmployeeFolder(employee.name);
+            }
+        });
         
         res.json({ 
             message: "Organigrama guardado correctamente",
             renamed: renamedEmployees.length,
-            created: newData.employees ? newData.employees.length : 0,
-            deleted: deletedEmployees ? deletedEmployees.length : 0
+            created: newEmployees.length,
+            deleted: deletedEmployees.length
         });
+        
         console.log("Organigrama guardado correctamente",
             "renamed: ", renamedEmployees.length,
-            "created: ", newData.employees ? newData.employees.length : 0,
-            "deleted: ", deletedEmployees ? deletedEmployees.length : 0)
+            "created: ", newEmployees.length,
+            "deleted: ", deletedEmployees.length);
+            
     } catch (err) {
         console.error("Error al guardar organigrama:", err);
         res.status(500).json({ error: "No se pudo guardar el archivo" });
@@ -213,29 +242,39 @@ router.put("/employees/:oldName", (req, res) => {
 
         const data = readData();
         
-        if (data.employees && Array.isArray(data.employees)) {
-            const employeeIndex = data.employees.findIndex((emp: any) => emp.name === oldName);
-        
-            if (employeeIndex === -1) {
-                console.log("Empleado no encontrado")
-                return res.status(404).json({ error: "Empleado no encontrado" });
+        // Función recursiva para encontrar y actualizar empleado
+        const updateEmployeeInTree = (node: any): boolean => {
+            if (node.name === oldName) {
+                if (newName && newName !== oldName) {
+                    renameEmployeeFolder(oldName, newName);
+                    node.name = newName;
+                }
+                Object.assign(node, otherData);
+                return true;
             }
-
-            // Si cambió el nombre, renombrar la carpeta
-            if (newName && newName !== oldName) {
-                renameEmployeeFolder(oldName, newName);
-                data.employees[employeeIndex].name = newName;
-            }
-
-            // Actualizar otros datos
-            data.employees[employeeIndex] = { ...data.employees[employeeIndex], ...otherData };
             
-            saveData(data);
-            res.json({ message: "Empleado actualizado correctamente" });
-            console.log("Empleado actualizado correctamente");
-        } else {
-        res.status(404).json({ error: "No se encontraron empleados" });
+            if (node.children && Array.isArray(node.children)) {
+                for (let i = 0; i < node.children.length; i++) {
+                    if (updateEmployeeInTree(node.children[i])) {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        };
+        
+        const updated = updateEmployeeInTree(data);
+        
+        if (!updated) {
+            console.log("Empleado no encontrado")
+            return res.status(404).json({ error: "Empleado no encontrado" });
         }
+        
+        saveData(data);
+        res.json({ message: "Empleado actualizado correctamente" });
+        console.log("Empleado actualizado correctamente");
+        
     } catch (error) {
         console.error("Error al actualizar empleado:", error);
         res.status(500).json({ error: "Error al actualizar el empleado" });
@@ -250,17 +289,38 @@ router.delete("/employees/:employeeName", (req, res) => {
     try {
         const employeeName = req.params.employeeName;
         
-        // Eliminar del JSON
+        // Función recursiva para eliminar empleado del árbol
+        const deleteEmployeeFromTree = (node: any): boolean => {
+            if (node.children && Array.isArray(node.children)) {
+                const index = node.children.findIndex((child: any) => child.name === employeeName);
+                if (index !== -1) {
+                    node.children.splice(index, 1);
+                    return true;
+                }
+                
+                for (let i = 0; i < node.children.length; i++) {
+                    if (deleteEmployeeFromTree(node.children[i])) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        
         const data = readData();
-        if (data.employees && Array.isArray(data.employees)) {
-            data.employees = data.employees.filter((emp: any) => emp.name !== employeeName);
-            saveData(data);
+        const deleted = deleteEmployeeFromTree(data);
+        
+        if (!deleted) {
+            return res.status(404).json({ error: "Empleado no encontrado" });
         }
+        
+        saveData(data);
         
         // Eliminar carpeta del empleado
         deleteEmployeeFolder(employeeName);
         console.log("Empleado eliminado correctamente");
         res.status(200).json({ message: "Empleado eliminado correctamente" });
+        
     } catch (error) {
         console.error("Error al eliminar empleado:", error);
         res.status(500).json({ error: "Error al eliminar el empleado" });
