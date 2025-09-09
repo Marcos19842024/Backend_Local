@@ -18,6 +18,7 @@ const readData = () => {
 // Función para guardar datos en JSON
 const saveData = (data: any) => {
     fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2), "utf-8");
+    console.log("Organigrama actualizado correctamente")
 };
 
 // Función para crear carpeta de empleado
@@ -165,7 +166,7 @@ router.get("/", (req, res) => {
 });
 
 /**
- * Guarda el organigrama y gestiona carpetas de empleados (función addchild)
+ * Guarda el organigrama y gestiona carpetas de empleados (función addChild, editNode y deleteNode)
  * http://localhost/orgchart POST
  */
 router.post("/", (req, res) => {
@@ -235,97 +236,97 @@ router.post("/", (req, res) => {
  * Actualizar empleado específico (función edit)
  * http://localhost/orgchart/employees/:oldName PUT
  */
-router.put("/employees/:oldName", (req, res) => {
-    try {
-        const oldName = req.params.oldName;
-        const { newName, ...otherData } = req.body;
+// router.put("/employees/:oldName", (req, res) => {
+//     try {
+//         const oldName = req.params.oldName;
+//         const { newName, ...otherData } = req.body;
 
-        const data = readData();
+//         const data = readData();
         
-        // Función recursiva para encontrar y actualizar empleado
-        const updateEmployeeInTree = (node: any): boolean => {
-            if (node.name === oldName) {
-                if (newName && newName !== oldName) {
-                    renameEmployeeFolder(oldName, newName);
-                    node.name = newName;
-                }
-                Object.assign(node, otherData);
-                return true;
-            }
+//         // Función recursiva para encontrar y actualizar empleado
+//         const updateEmployeeInTree = (node: any): boolean => {
+//             if (node.name === oldName) {
+//                 if (newName && newName !== oldName) {
+//                     renameEmployeeFolder(oldName, newName);
+//                     node.name = newName;
+//                 }
+//                 Object.assign(node, otherData);
+//                 return true;
+//             }
             
-            if (node.children && Array.isArray(node.children)) {
-                for (let i = 0; i < node.children.length; i++) {
-                    if (updateEmployeeInTree(node.children[i])) {
-                        return true;
-                    }
-                }
-            }
+//             if (node.children && Array.isArray(node.children)) {
+//                 for (let i = 0; i < node.children.length; i++) {
+//                     if (updateEmployeeInTree(node.children[i])) {
+//                         return true;
+//                     }
+//                 }
+//             }
             
-            return false;
-        };
+//             return false;
+//         };
         
-        const updated = updateEmployeeInTree(data);
+//         const updated = updateEmployeeInTree(data);
         
-        if (!updated) {
-            console.log("Empleado no encontrado")
-            return res.status(404).json({ error: "Empleado no encontrado" });
-        }
+//         if (!updated) {
+//             console.log("Empleado no encontrado")
+//             return res.status(404).json({ error: "Empleado no encontrado" });
+//         }
         
-        saveData(data);
-        res.json({ message: "Empleado actualizado correctamente" });
-        console.log("Empleado actualizado correctamente");
+//         saveData(data);
+//         res.json({ message: "Empleado actualizado correctamente" });
+//         console.log("Empleado actualizado correctamente");
         
-    } catch (error) {
-        console.error("Error al actualizar empleado:", error);
-        res.status(500).json({ error: "Error al actualizar el empleado" });
-    }
-});
+//     } catch (error) {
+//         console.error("Error al actualizar empleado:", error);
+//         res.status(500).json({ error: "Error al actualizar el empleado" });
+//     }
+// });
 
 /**
  * Eliminar empleado específico y su carpeta (funcion delete)
  * http://localhost/orgchart/employees/:employeeName DELETE
  */
-router.delete("/employees/:employeeName", (req, res) => {
-    try {
-        const employeeName = req.params.employeeName;
+// router.delete("/employees/:employeeName", (req, res) => {
+//     try {
+//         const employeeName = req.params.employeeName;
         
-        // Función recursiva para eliminar empleado del árbol
-        const deleteEmployeeFromTree = (node: any): boolean => {
-            if (node.children && Array.isArray(node.children)) {
-                const index = node.children.findIndex((child: any) => child.name === employeeName);
-                if (index !== -1) {
-                    node.children.splice(index, 1);
-                    return true;
-                }
+//         // Función recursiva para eliminar empleado del árbol
+//         const deleteEmployeeFromTree = (node: any): boolean => {
+//             if (node.children && Array.isArray(node.children)) {
+//                 const index = node.children.findIndex((child: any) => child.name === employeeName);
+//                 if (index !== -1) {
+//                     node.children.splice(index, 1);
+//                     return true;
+//                 }
                 
-                for (let i = 0; i < node.children.length; i++) {
-                    if (deleteEmployeeFromTree(node.children[i])) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        };
+//                 for (let i = 0; i < node.children.length; i++) {
+//                     if (deleteEmployeeFromTree(node.children[i])) {
+//                         return true;
+//                     }
+//                 }
+//             }
+//             return false;
+//         };
         
-        const data = readData();
-        const deleted = deleteEmployeeFromTree(data);
+//         const data = readData();
+//         const deleted = deleteEmployeeFromTree(data);
         
-        if (!deleted) {
-            return res.status(404).json({ error: "Empleado no encontrado" });
-        }
+//         if (!deleted) {
+//             return res.status(404).json({ error: "Empleado no encontrado" });
+//         }
         
-        saveData(data);
+//         saveData(data);
         
-        // Eliminar carpeta del empleado
-        deleteEmployeeFolder(employeeName);
-        console.log("Empleado eliminado correctamente");
-        res.status(200).json({ message: "Empleado eliminado correctamente" });
+//         // Eliminar carpeta del empleado
+//         deleteEmployeeFolder(employeeName);
+//         console.log("Empleado eliminado correctamente");
+//         res.status(200).json({ message: "Empleado eliminado correctamente" });
         
-    } catch (error) {
-        console.error("Error al eliminar empleado:", error);
-        res.status(500).json({ error: "Error al eliminar el empleado" });
-    }
-});
+//     } catch (error) {
+//         console.error("Error al eliminar empleado:", error);
+//         res.status(500).json({ error: "Error al eliminar el empleado" });
+//     }
+// });
 
 /************************************
  * **********************************
