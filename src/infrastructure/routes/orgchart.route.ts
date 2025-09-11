@@ -2,10 +2,16 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
+import nodemailer from "nodemailer";
+import archiver from "archiver";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const router = express.Router();
-
-const DATA_PATH = path.join(process.cwd(), "tmp/orgchart/orgData.json");
+const ruta = `${process.cwd()}/tmp/orgchart`
+const DATA_PATH = path.join(ruta,"orgData.json");
+const rutaBase = path.join(ruta,"employees")
 
 // Función para leer datos del JSON
 const readData = () => {
@@ -23,7 +29,7 @@ const saveData = (data: any) => {
 
 // Función para crear carpeta de empleado
 const createEmployeeFolder = (employeeName: string) => {
-    const employeePath = path.join(process.cwd(), 'tmp/orgchart', 'employees', employeeName);
+    const employeePath = path.join(rutaBase, employeeName);
     if (!fs.existsSync(employeePath)) {
         fs.mkdirSync(employeePath, { recursive: true });
         console.log("Se creó la carpeta ", employeeName)
@@ -33,7 +39,7 @@ const createEmployeeFolder = (employeeName: string) => {
 
 // Función para eliminar carpeta de empleado
 const deleteEmployeeFolder = (employeeName: string) => {
-    const employeePath = path.join(process.cwd(), 'tmp/orgchart', 'employees', employeeName);
+    const employeePath = path.join(rutaBase, employeeName);
     if (fs.existsSync(employeePath)) {
         // Eliminar todos los archivos primero
         const files = fs.readdirSync(employeePath);
@@ -48,8 +54,8 @@ const deleteEmployeeFolder = (employeeName: string) => {
 
 // Función para renombrar carpeta de empleado
 const renameEmployeeFolder = (oldName: string, newName: string) => {
-    const oldPath = path.join(process.cwd(), 'tmp/orgchart', 'employees', oldName);
-    const newPath = path.join(process.cwd(), 'tmp/orgchart', 'employees', newName);
+    const oldPath = path.join(rutaBase, oldName);
+    const newPath = path.join(rutaBase, newName);
     
     if (fs.existsSync(oldPath)) {
         // Si la nueva carpeta ya existe, eliminarla primero
@@ -150,6 +156,15 @@ const findRenamedEmployees = (oldData: any, newData: any) => {
     return renamed;
 };
 
+// Configurar transporte de correo
+const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+    },
+});
+
 /**
  * Obtener el organigrama inicialmente
  * http://localhost/orgchart GET
@@ -232,102 +247,6 @@ router.post("/", (req, res) => {
     }
 });
 
-/**
- * Actualizar empleado específico (función edit)
- * http://localhost/orgchart/employees/:oldName PUT
- */
-// router.put("/employees/:oldName", (req, res) => {
-//     try {
-//         const oldName = req.params.oldName;
-//         const { newName, ...otherData } = req.body;
-
-//         const data = readData();
-        
-//         // Función recursiva para encontrar y actualizar empleado
-//         const updateEmployeeInTree = (node: any): boolean => {
-//             if (node.name === oldName) {
-//                 if (newName && newName !== oldName) {
-//                     renameEmployeeFolder(oldName, newName);
-//                     node.name = newName;
-//                 }
-//                 Object.assign(node, otherData);
-//                 return true;
-//             }
-            
-//             if (node.children && Array.isArray(node.children)) {
-//                 for (let i = 0; i < node.children.length; i++) {
-//                     if (updateEmployeeInTree(node.children[i])) {
-//                         return true;
-//                     }
-//                 }
-//             }
-            
-//             return false;
-//         };
-        
-//         const updated = updateEmployeeInTree(data);
-        
-//         if (!updated) {
-//             console.log("Empleado no encontrado")
-//             return res.status(404).json({ error: "Empleado no encontrado" });
-//         }
-        
-//         saveData(data);
-//         res.json({ message: "Empleado actualizado correctamente" });
-//         console.log("Empleado actualizado correctamente");
-        
-//     } catch (error) {
-//         console.error("Error al actualizar empleado:", error);
-//         res.status(500).json({ error: "Error al actualizar el empleado" });
-//     }
-// });
-
-/**
- * Eliminar empleado específico y su carpeta (funcion delete)
- * http://localhost/orgchart/employees/:employeeName DELETE
- */
-// router.delete("/employees/:employeeName", (req, res) => {
-//     try {
-//         const employeeName = req.params.employeeName;
-        
-//         // Función recursiva para eliminar empleado del árbol
-//         const deleteEmployeeFromTree = (node: any): boolean => {
-//             if (node.children && Array.isArray(node.children)) {
-//                 const index = node.children.findIndex((child: any) => child.name === employeeName);
-//                 if (index !== -1) {
-//                     node.children.splice(index, 1);
-//                     return true;
-//                 }
-                
-//                 for (let i = 0; i < node.children.length; i++) {
-//                     if (deleteEmployeeFromTree(node.children[i])) {
-//                         return true;
-//                     }
-//                 }
-//             }
-//             return false;
-//         };
-        
-//         const data = readData();
-//         const deleted = deleteEmployeeFromTree(data);
-        
-//         if (!deleted) {
-//             return res.status(404).json({ error: "Empleado no encontrado" });
-//         }
-        
-//         saveData(data);
-        
-//         // Eliminar carpeta del empleado
-//         deleteEmployeeFolder(employeeName);
-//         console.log("Empleado eliminado correctamente");
-//         res.status(200).json({ message: "Empleado eliminado correctamente" });
-        
-//     } catch (error) {
-//         console.error("Error al eliminar empleado:", error);
-//         res.status(500).json({ error: "Error al eliminar el empleado" });
-//     }
-// });
-
 /************************************
  * **********************************
  * Estas rutas son para el FileViewer
@@ -341,7 +260,7 @@ router.post("/", (req, res) => {
 router.get("/employees/:employeeName", (req, res) => {
     try {
         const employeeName = req.params.employeeName;
-        const employeePath = path.join(process.cwd(), 'tmp/orgchart', 'employees', employeeName);
+        const employeePath = path.join(rutaBase, employeeName);
         
         if (!fs.existsSync(employeePath)) {
             return res.json([]);
@@ -390,7 +309,7 @@ router.post("/employees/:employeeName", upload.single('file'), (req, res) => {
 router.delete("/employees/:employeeName/:fileName", (req, res) => {
     try {
         const { employeeName, fileName } = req.params;
-        const filePath = path.join(process.cwd(), 'tmp/orgchart', 'employees', employeeName, fileName);
+        const filePath = path.join(rutaBase, employeeName, fileName);
         
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: "Archivo no encontrado" });
@@ -401,6 +320,76 @@ router.delete("/employees/:employeeName/:fileName", (req, res) => {
     } catch (error) {
         console.error("Error al eliminar archivo:", error);
         res.status(500).json({ error: "Error al eliminar el archivo" });
+    }
+});
+
+/**
+ * Genera un ZIP con el expediente con el expediente del empleado
+ * http://localhost/orgchart/download&SendMailZip/:employeeName GET
+ */
+router.post("/download&SendMailZip/:employeeName", async (req, res) => {
+    try {
+        const { employeeName } = req.params;
+        const send = req.body.send;
+        const download = req.body.download;
+
+        // 📦 Ruta temporal para guardar ZIP antes de enviar
+        const tmpZipPath = path.join(process.cwd(), "tmp", employeeName);
+
+        // Creamos el ZIP en disco en lugar de enviarlo directo
+        const output = fs.createWriteStream(tmpZipPath);
+        const archive = archiver("zip", { zlib: { level: 9 } });
+
+        archive.pipe(output);
+
+        // Añadimos carpeta employeeName al ZIP
+        const employeePath = path.join(rutaBase, employeeName);
+        archive.directory(employeePath, employeeName);
+
+        await archive.finalize();
+
+        // 🔔 Cuando se termine de escribir el ZIP, enviamos correo
+        output.on("close", async () => {
+            try {
+                const mailOptions = {
+                    from: process.env.EMAIL_USER,
+                    to: process.env.EMAIL_TO,
+                    subject: `📦 Expediente de ${employeeName} (ZIP)`,
+                    text: `Se adjunta el expediente de ${employeeName} comprimido en ZIP.`,
+                    attachments: [
+                        {
+                            filename: employeeName,
+                            path: tmpZipPath,
+                            contentType: "application/zip",
+                        },
+                    ],
+                };
+
+                if (send) {
+                    await transporter.sendMail(mailOptions);
+                }
+                
+                if (download) {
+                    // 📤 Enviar ZIP al frontend
+                    res.download(tmpZipPath, employeeName, async (err) => {
+                        if (err) {
+                            console.error("Error enviando ZIP al frontend:", err);
+                        }
+
+                        // 🧹 También borramos el zip temporal
+                        fs.unlink(tmpZipPath, (err) => {
+                            if (err) console.error("Error eliminando ZIP temporal:", err);
+                        });
+                    });
+                }
+            } catch (error) {
+                console.error("Error enviando correo:", error);
+                res.status(500).send("Error enviando el ZIP por correo");
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Error al generar el ZIP");
     }
 });
 

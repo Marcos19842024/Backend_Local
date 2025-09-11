@@ -3,9 +3,13 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import archiver from "archiver";
+import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const router = express.Router();
-
+const ruta = `${process.cwd()}/tmp/invoices`
 // multer en memoria
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -21,7 +25,7 @@ type InvoiceFiles = {
  */
 router.post("/", upload.fields([{ name: "pdf" }, { name: "xml" }]), (req, res) => {
   const { fecha, proveedor, factura, oldFactura } = req.body;
-  const baseDir = path.join(process.cwd(), "tmp/invoices", fecha, proveedor);
+  const baseDir = path.join(ruta, fecha, proveedor);
 
   if (!fs.existsSync(baseDir)) {
     fs.mkdirSync(baseDir, { recursive: true });
@@ -61,7 +65,7 @@ router.post("/", upload.fields([{ name: "pdf" }, { name: "xml" }]), (req, res) =
  */
 router.delete("/:fecha/:proveedor/:factura", (req, res) => {
   const { fecha, proveedor, factura } = req.params;
-  const baseDir = path.join(process.cwd(), "tmp/invoices", fecha, proveedor);
+  const baseDir = path.join(ruta, fecha, proveedor);
 
   const pdfPath = path.join(baseDir, `${factura}.pdf`);
   const xmlPath = path.join(baseDir, `${factura}.xml`);
@@ -76,7 +80,7 @@ router.delete("/:fecha/:proveedor/:factura", (req, res) => {
     }
 
     // 🗑️ eliminar carpeta de la fecha si también queda vacía
-    const fechaDir = path.join(process.cwd(), "tmp/invoices", fecha);
+    const fechaDir = path.join(ruta, fecha);
     if (fs.existsSync(fechaDir) && fs.readdirSync(fechaDir).length === 0) {
       fs.rmdirSync(fechaDir, { recursive: true });
     }
@@ -92,11 +96,6 @@ router.delete("/:fecha/:proveedor/:factura", (req, res) => {
  * http://localhost/invoices GET /download-zip
  * Genera reporte en PDF y lo empaqueta con facturas en un ZIP
  */
-import nodemailer from "nodemailer";
-import dotenv from "dotenv";
-
-dotenv.config();
-
 // Configurar transporte de correo
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -110,10 +109,13 @@ router.post("/download&SendMailZip", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).send("No se envió ningún PDF");
 
+    const send = req.body.send;
+    const download = req.body.download;
     // Normalización de nombre
-    const raw = (req.body.pdfName ?? "reporte.pdf").toString();
+    const raw = (req.body.pdfName ?? "reporte de gastos.pdf").toString();
     const cleanedBase = raw
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^\w.\- ]/g, "")
       .replace(/\s+/g, " ")
       .trim();
@@ -137,14 +139,13 @@ router.post("/download&SendMailZip", upload.single("pdf"), async (req, res) => {
     archive.append(req.file.buffer, { name: pdfName });
 
     // Directorio base de facturas
-    const baseDir = path.join(process.cwd(), "tmp", "invoices");
-    if (!fs.existsSync(baseDir)) {
+    if (!fs.existsSync(ruta)) {
       return res.status(400).send("No hay facturas para comprimir");
     }
 
     // Añadimos carpetas fecha/proveedor al ZIP
-    for (const fecha of fs.readdirSync(baseDir)) {
-      const fechaPath = path.join(baseDir, fecha);
+    for (const fecha of fs.readdirSync(ruta)) {
+      const fechaPath = path.join(ruta, fecha);
       if (!fs.statSync(fechaPath).isDirectory()) continue;
 
       for (const proveedor of fs.readdirSync(fechaPath)) {
@@ -161,9 +162,9 @@ router.post("/download&SendMailZip", upload.single("pdf"), async (req, res) => {
     output.on("close", async () => {
       try {
         const mailOptions = {
-          from: `"Reportes Web" <${process.env.EMAIL_USER}>`,
+          from: process.env.EMAIL_USER,
           to: process.env.EMAIL_TO,
-          subject: "📦 Reporte de Gastos (ZIP)",
+          subject: `📦 ${zipName.replace(".zip", "")} (ZIP)`,
           text: "Se adjunta el reporte de gastos comprimido en ZIP.",
           attachments: [
             {
@@ -174,25 +175,29 @@ router.post("/download&SendMailZip", upload.single("pdf"), async (req, res) => {
           ],
         };
 
-        await transporter.sendMail(mailOptions);
+        if (send) {
+          await transporter.sendMail(mailOptions);
+        }
 
-        // 📤 Enviar ZIP al frontend
-        res.download(tmpZipPath, zipName, async (err) => {
-          if (err) {
-            console.error("Error enviando ZIP al frontend:", err);
-          }
+        if (download) {
+          // 📤 Enviar ZIP al frontend
+          res.download(tmpZipPath, zipName, async (err) => {
+            if (err) {
+              console.error("Error enviando ZIP al frontend:", err);
+            }
 
-          // 🧹 Borramos carpeta invoices después de mandar respuesta
-          fs.rm(baseDir, { recursive: true, force: true }, (err) => {
-            if (err) console.error("Error eliminando invoices:", err);
-            else console.log("Carpeta invoices eliminada ✅");
+            // 🧹 Borramos carpeta invoices después de mandar respuesta
+            fs.rm(ruta, { recursive: true, force: true }, (err) => {
+              if (err) console.error("Error eliminando invoices:", err);
+              else console.log("Carpeta invoices eliminada ✅");
+            });
+
+            // 🧹 También borramos el zip temporal
+            fs.unlink(tmpZipPath, (err) => {
+              if (err) console.error("Error eliminando ZIP temporal:", err);
+            });
           });
-
-          // 🧹 También borramos el zip temporal
-          fs.unlink(tmpZipPath, (err) => {
-            if (err) console.error("Error eliminando ZIP temporal:", err);
-          });
-        });
+        }
       } catch (error) {
         console.error("Error enviando correo:", error);
         res.status(500).send("Error enviando el ZIP por correo");

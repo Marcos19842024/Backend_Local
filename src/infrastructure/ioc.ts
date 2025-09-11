@@ -1,11 +1,7 @@
 import { ContainerBuilder } from "node-dependency-injection";
 import Ws from "./repositories/ws";
-import { LeadCreate } from "../application/lead.create";
-import LeadCtrl from "./controller/lead.ctrl";
-import { StatusCreate } from "../application/status.create";
-import StatusCtrl from "./controller/status.ctrl";
-import { ContactCreate } from "../application/contact.create";
-import ContactCtrl from "./controller/contact.ctrl";
+import { LeadCreate, StatusCreate, ContactCreate } from "../application/wwebjs";
+import { LeadCtrl, StatusCtrl, ContactCtrl } from "./controller/wwebjs";
 
 const container = new ContainerBuilder();
 

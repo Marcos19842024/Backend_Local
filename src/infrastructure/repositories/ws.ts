@@ -1,6 +1,6 @@
 import { Client, LocalAuth, MessageMedia } from "whatsapp-web.js";
 import { image as imageQr } from "qr-image";
-import LeadExternal from "../../domain/lead-external.repository";
+import { LeadExternal } from "../../domain/wwebjs";
 
 /**
  * Extendemos los super poderes de whatsapp-web
