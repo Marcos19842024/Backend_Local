@@ -330,8 +330,8 @@ router.delete("/employees/:employeeName/:fileName", (req, res) => {
 router.post("/download&SendMailZip/:employeeName", async (req, res) => {
     try {
         const { employeeName } = req.params;
-        const send = req.body.send;
-        const download = req.body.download;
+        const send = req.body.send === "true";
+        const download = req.body.download === "true";
 
         // 📦 Ruta temporal para guardar ZIP antes de enviar
         const tmpZipPath = path.join(process.cwd(), "tmp", employeeName);

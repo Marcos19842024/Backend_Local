@@ -105,12 +105,12 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-router.post("/download&SendMailZip", upload.single("pdf"), async (req, res) => {
+router.post("/download-send-mail-zip", upload.single("pdf"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).send("No se envió ningún PDF");
 
-    const send = req.body.send;
-    const download = req.body.download;
+    const send = req.body.send === "true";
+    const download = req.body.download === "true";
     // Normalización de nombre
     const raw = (req.body.pdfName ?? "reporte de gastos.pdf").toString();
     const cleanedBase = raw
