@@ -338,13 +338,18 @@ router.delete("/employees/:employeeName/:fileName", (req, res) => {
  * Genera un ZIP con el expediente con el expediente del empleado
  * http://localhost/orgchart/download&SendMailZip/:employeeName GET
  */
-router.post("/download&SendMailZip/:employeeName", async (req, res) => {
+router.post("/download-send-mail-zip/:employeeName", async (req, res) => {
     let tmpZipPath: any = null;
 
     try {
         const { employeeName } = req.params;
         const send = req.body.send === "true";
         const download = req.body.download === "true";
+        const email = req.body;
+
+        if (send && !email) {
+            return res.status(400).json({ message: "Email es requerido para enviar" });
+        }
 
         // 📦 Ruta temporal para guardar ZIP antes de enviar
         tmpZipPath = path.join(process.cwd(), "tmp", employeeName);
@@ -371,7 +376,7 @@ router.post("/download&SendMailZip/:employeeName", async (req, res) => {
         if (send) {
             const mailOptions = {
                 from: process.env.EMAIL_USER,
-                to: process.env.EMAIL_TO,
+                to: process.env.email,
                 subject: `📦 Expediente de ${employeeName} (ZIP)`,
                 text: "Se adjunta el reporte de gastos comprimido en ZIP.",
                 attachments: [
