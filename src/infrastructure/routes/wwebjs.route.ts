@@ -75,3 +75,5 @@ router.delete("/delete/:name", logMiddleware, (req, res, _next) => {
  * http://localhost/send/:user/:userid POST
  */
 router.post("/send/:user/:userid", logMiddleware, leadCtrl.sendCtrl);
+
+export { router };
