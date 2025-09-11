@@ -20,6 +20,22 @@ type InvoiceFiles = {
   xml?: Express.Multer.File[];
 };
 
+// Función auxiliar para limpieza
+function cleanup(tmpZipPath: fs.PathLike, invoicesPath: fs.PathLike) {
+  // 🧹 Borramos carpeta invoices
+  fs.rm(invoicesPath, { recursive: true, force: true }, (err) => {
+    if (err) console.error("Error eliminando invoices:", err);
+    else console.log("Carpeta invoices eliminada ✅");
+  });
+
+  // 🧹 Borramos el zip temporal
+  if (tmpZipPath && fs.existsSync(tmpZipPath)) {
+    fs.unlink(tmpZipPath, (err) => {
+      if (err) console.error("Error eliminando ZIP temporal:", err);
+    });
+  }
+}
+
 /**
  * http://localhost/invoices POST
  */
@@ -106,11 +122,14 @@ const transporter = nodemailer.createTransport({
 });
 
 router.post("/download-send-mail-zip", upload.single("pdf"), async (req, res) => {
+  let tmpZipPath: any = null;
+  
   try {
     if (!req.file) return res.status(400).send("No se envió ningún PDF");
 
     const send = req.body.send === "true";
     const download = req.body.download === "true";
+    
     // Normalización de nombre
     const raw = (req.body.pdfName ?? "reporte de gastos.pdf").toString();
     const cleanedBase = raw
@@ -127,7 +146,7 @@ router.post("/download-send-mail-zip", upload.single("pdf"), async (req, res) =>
     const zipName = pdfName.replace(/\.pdf$/i, ".zip");
 
     // 📦 Ruta temporal para guardar ZIP antes de enviar
-    const tmpZipPath = path.join(process.cwd(), "tmp", zipName);
+    tmpZipPath = path.join(process.cwd(), "tmp", zipName);
 
     // Creamos el ZIP en disco en lugar de enviarlo directo
     const output = fs.createWriteStream(tmpZipPath);
@@ -158,54 +177,65 @@ router.post("/download-send-mail-zip", upload.single("pdf"), async (req, res) =>
 
     await archive.finalize();
 
-    // 🔔 Cuando se termine de escribir el ZIP, enviamos correo
-    output.on("close", async () => {
-      try {
-        const mailOptions = {
-          from: process.env.EMAIL_USER,
-          to: process.env.EMAIL_TO,
-          subject: `📦 ${zipName.replace(".zip", "")} (ZIP)`,
-          text: "Se adjunta el reporte de gastos comprimido en ZIP.",
-          attachments: [
-            {
-              filename: zipName,
-              path: tmpZipPath,
-              contentType: "application/zip",
-            },
-          ],
-        };
-
-        if (send) {
-          await transporter.sendMail(mailOptions);
-        }
-
-        if (download) {
-          // 📤 Enviar ZIP al frontend
-          res.download(tmpZipPath, zipName, async (err) => {
-            if (err) {
-              console.error("Error enviando ZIP al frontend:", err);
-            }
-
-            // 🧹 Borramos carpeta invoices después de mandar respuesta
-            fs.rm(ruta, { recursive: true, force: true }, (err) => {
-              if (err) console.error("Error eliminando invoices:", err);
-              else console.log("Carpeta invoices eliminada ✅");
-            });
-
-            // 🧹 También borramos el zip temporal
-            fs.unlink(tmpZipPath, (err) => {
-              if (err) console.error("Error eliminando ZIP temporal:", err);
-            });
-          });
-        }
-      } catch (error) {
-        console.error("Error enviando correo:", error);
-        res.status(500).send("Error enviando el ZIP por correo");
-      }
+    // Esperamos a que el archivo ZIP se termine de escribir
+    await new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      output.on('error', reject);
     });
+
+    // 🔔 Enviar correo si está solicitado
+    if (send) {
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: process.env.EMAIL_TO,
+        subject: `📦 ${zipName.replace(".zip", "")} (ZIP)`,
+        text: "Se adjunta el reporte de gastos comprimido en ZIP.",
+        attachments: [
+          {
+            filename: zipName,
+            path: tmpZipPath,
+            contentType: "application/zip",
+          },
+        ],
+      };
+
+      await transporter.sendMail(mailOptions);
+    }
+
+    // 📤 Enviar respuesta al frontend
+    if (download) {
+      // Enviar ZIP para descargar
+      res.download(tmpZipPath, zipName, async (err) => {
+        // Limpieza después de enviar la respuesta
+        cleanup(tmpZipPath, ruta);
+        if (err) {
+          console.error("Error enviando ZIP al frontend:", err);
+        }
+      });
+    } else {
+      // Solo enviar por correo - enviar respuesta JSON
+      res.json({
+        success: true,
+        message: send ? "Reporte enviado por correo correctamente" : "Operación completada",
+        emailSent: send
+      });
+      
+      // Limpieza después de enviar la respuesta
+      cleanup(tmpZipPath, ruta);
+    }
+
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Error al generar el ZIP");
+    
+    // Limpieza en caso de error
+    if (tmpZipPath && fs.existsSync(tmpZipPath)) {
+      fs.unlinkSync(tmpZipPath);
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: "Error al procesar la solicitud",
+      error: typeof err === "object" && err !== null && "message" in err ? (err as any).message : String(err)
+    });
   }
 });
 
