@@ -115,7 +115,6 @@ const getAllEmployees = (node: any): any[] => {
         employees.push({
             id: node.id,
             name: node.name,
-            alias: node.alias
         });
     }
     
