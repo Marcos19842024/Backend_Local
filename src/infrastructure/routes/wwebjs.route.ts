@@ -48,14 +48,14 @@ router.post("/upload", logMiddleware, fileUpload, (req, res) => {
 /**
  * http://localhost/delete/:name DELETE
  */
-router.delete("/delete/:name", logMiddleware, (req, res, _next) => {
-    const file = path + req.params.name;
-    fs.exists(file, function(exists) {
-        if (!exists) {
+router.delete("/:name", logMiddleware, (req, res, _next) => {
+    const file = path + "/" + req.params.name;
+    fs.access(file, fs.constants.F_OK, (err) => {
+        if (err) {
             const data = {
                 err: true,
                 status: "400",
-                statusText: "ERROR File does NOT Exists"
+                statusText: `ERROR ${file} does NOT Exist`
             }
             res.json(data);
         } else {
