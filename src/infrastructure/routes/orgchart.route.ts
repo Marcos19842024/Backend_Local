@@ -82,18 +82,16 @@ const storage = multer.diskStorage({
     }
 });
 
-// Filtrar solo archivos PDF y Word
+// Filtrar solo archivos PDF
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
     const allowedTypes = [
         'application/pdf',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/msword'
     ];
     
     if (allowedTypes.includes(file.mimetype)) {
         cb(null, true);
     } else {
-        cb(new Error('Solo se permiten archivos PDF y Word'));
+        cb(new Error('Solo se permiten archivos PDF'));
     }
 };
 
@@ -303,6 +301,20 @@ router.post("/employees/:employeeName", upload.single('file'), (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: "No se proporcionó ningún archivo" });
+        }
+
+        // Guardar el JSON si existe
+        if (req.body.jsonData) {
+            const jsonData = JSON.parse(req.body.jsonData);
+            
+            // Usar el mismo nombre base que el PDF pero con extensión .json
+            const pdfNameWithoutExt = path.parse(req.file.originalname).name;
+            const jsonFileName = `${pdfNameWithoutExt}.json`;
+            const jsonPath = path.join(rutaBase, req.params.employeeName, jsonFileName);
+            
+            fs.writeFileSync(jsonPath, JSON.stringify(jsonData, null, 2), "utf-8");
+            
+            console.log(`Archivos del empleado "${req.params.employeeName}" guardados correctamente`);
         }
 
         res.status(200).send();
