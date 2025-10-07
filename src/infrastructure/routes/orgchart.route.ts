@@ -338,6 +338,18 @@ router.delete("/employees/:employeeName/:fileName", (req, res) => {
         }
 
         fs.unlinkSync(filePath);
+
+        // Si el archivo es "Alta del personal.pdf", eliminar también el JSON
+        if (fileName === "Alta del personal.pdf") {
+            const jsonFileName = fileName.replace('.pdf', '.json');
+            const jsonFilePath = path.join(rutaBase, employeeName, jsonFileName);
+            
+            // Verificar si existe el archivo JSON antes de eliminarlo
+            if (fs.existsSync(jsonFilePath)) {
+                fs.unlinkSync(jsonFilePath);
+            }
+        }
+        
         res.json({ message: "Archivo eliminado correctamente" });
     } catch (error) {
         console.error("Error al eliminar archivo:", error);
