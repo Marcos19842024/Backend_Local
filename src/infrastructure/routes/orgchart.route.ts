@@ -339,8 +339,8 @@ router.delete("/employees/:employeeName/:fileName", (req, res) => {
 
         fs.unlinkSync(filePath);
 
-        // Si el archivo es "Alta del personal.pdf", eliminar también el JSON
-        if (fileName === "Alta del personal.pdf") {
+        // Eliminar también el JSON correspondiente si existe
+        if (fileName.endsWith('.pdf')) {
             const jsonFileName = fileName.replace('.pdf', '.json');
             const jsonFilePath = path.join(rutaBase, employeeName, jsonFileName);
             
