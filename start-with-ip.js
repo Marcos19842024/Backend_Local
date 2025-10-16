@@ -104,7 +104,7 @@ async function startServer() {
   }, 3000);
 
   // Ejecutar el servidor TypeScript
-  const server = spawn('npx', ['ts-node', 'src/app.ts'], { 
+  const server = spawn('npx', ['ts-node', './dist/app.js'], { 
     stdio: 'inherit',
     env: { 
       ...process.env,
