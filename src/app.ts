@@ -43,6 +43,17 @@ app.use(cors())
 app.use(express.json())
 app.use(express.urlencoded({extended: false, limit: '50mb' }))
 app.use(`/`,router)
+app.get('/api/config', (req, res) => {
+  const config = {
+    apiUrl: `http://${getLocalIP()}:${port}`,
+    backendIp: getLocalIP(),
+    backendPort: port,
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
+  };
+  console.log('🔧 Configuración solicitada:', config.apiUrl);
+  res.json(config);
+});
 app.use(history())
 app.use(express.static(path + 'dist/Ecommerce_Local/dist/'))
 app.use(express.static(path + 'tmp'))
