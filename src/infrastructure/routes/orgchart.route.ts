@@ -399,9 +399,9 @@ router.post("/download-send-mail-zip/:employeeName", async (req, res) => {
         await archive.finalize();
 
         // Esperar a que se complete la escritura
-        await new Promise((resolve, reject) => {
-            output.on('close', resolve);
-            output.on('error', reject);
+        await new Promise<void>((resolve, reject) => {
+            output.on('close', () => resolve());
+            output.on('error', (error) => reject(error));
         });
 
         console.log('ZIP creado en:', tmpZipPath);

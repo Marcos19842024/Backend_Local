@@ -83,7 +83,10 @@ class Ws implements LeadExternal {
     pathtofiles: string[];
   }): Promise<any> {
     try {
-      const url = process.env.URL + 'media/';
+      const baseUrl = process.env.LOCAL_IP 
+      ? `http://${process.env.LOCAL_IP}:${process.env.PORT || '3001'}/`
+      : (process.env.URL || 'http://localhost:3001/');
+      const url = baseUrl + 'media/';
       const { client, clientid, message, phone, pathtofiles } = lead;
       // Validaciones de seguridad
       if (client !== this.user || clientid !== this.userid) {

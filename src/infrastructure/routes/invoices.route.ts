@@ -178,9 +178,9 @@ router.post("/download-send-mail-zip", upload.single("pdf"), async (req, res) =>
     await archive.finalize();
 
     // Esperamos a que el archivo ZIP se termine de escribir
-    await new Promise((resolve, reject) => {
-      output.on('close', resolve);
-      output.on('error', reject);
+    await new Promise<void>((resolve, reject) => {
+      output.on('close', () => resolve());
+      output.on('error', (error) => reject(error));
     });
 
     // 🔔 Enviar correo si está solicitado
