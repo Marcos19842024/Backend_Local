@@ -87,21 +87,21 @@ async function startServer() {
   console.log('🚀 Iniciando servidor...\n');
 
   // Abrir automáticamente en el navegador
-  setTimeout(() => {
-    try {
-      const { exec } = require('child_process');
-      exec(`open ${url}`, (error) => {
-        if (error) {
-          console.log(`⚠️  No se pudo abrir automáticamente`);
-          console.log(`📱 Accede manualmente a: ${url}`);
-        } else {
-          console.log(`🌐 Navegador abierto en: ${url}`);
-        }
-      });
-    } catch (err) {
-      console.log(`📱 Accede manualmente a: ${url}`);
-    }
-  }, 3000);
+  // setTimeout(() => {
+  //   try {
+  //     const { exec } = require('child_process');
+  //     exec(`open ${url}`, (error) => {
+  //       if (error) {
+  //         console.log(`⚠️  No se pudo abrir automáticamente`);
+  //         console.log(`📱 Accede manualmente a: ${url}`);
+  //       } else {
+  //         console.log(`🌐 Navegador abierto en: ${url}`);
+  //       }
+  //     });
+  //   } catch (err) {
+  //     console.log(`📱 Accede manualmente a: ${url}`);
+  //   }
+  // }, 3000);
 
   // Ejecutar el servidor TypeScript
   const server = spawn('npx', ['ts-node', './dist/app.js'], { 
