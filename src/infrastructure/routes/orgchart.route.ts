@@ -293,6 +293,39 @@ router.get("/employees/:employeeName", (req, res) => {
     }
 });
 
+router.get("/employees/:employeeName/:fileName", (req, res) => {
+    try {
+        const { employeeName, fileName } = req.params;
+        const filePath = path.join(rutaBase, employeeName, fileName);
+        
+        console.log(`Buscando archivo: ${filePath}`);
+        
+        if (!fs.existsSync(filePath)) {
+            console.log(`Archivo no encontrado: ${filePath}`);
+            return res.status(404).json({ error: "Archivo no encontrado" });
+        }
+
+        // Si es un archivo JSON, leer y parsear
+        if (fileName.endsWith('.json')) {
+            const fileContent = fs.readFileSync(filePath, 'utf-8');
+            try {
+                const jsonData = JSON.parse(fileContent);
+                console.log(`JSON cargado correctamente: ${fileName}`);
+                res.json(jsonData);
+            } catch (parseError) {
+                console.error(`Error parseando JSON ${fileName}:`, parseError);
+                res.status(500).json({ error: "Error al parsear el archivo JSON" });
+            }
+        } else {
+            // Para otros archivos, enviar el archivo directamente
+            res.sendFile(filePath);
+        }
+    } catch (error) {
+        console.error("Error al obtener archivo:", error);
+        res.status(500).json({ error: "Error al obtener el archivo" });
+    }
+});
+
 /**
  * Subir archivo para un empleado específico
  * http://localhost/orgchart/employees/:employeeName POST
