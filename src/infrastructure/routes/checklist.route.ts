@@ -12,7 +12,7 @@ const upload = multer({
 });
 
 const router: Router = Router();
-const checklistDir = `${process.cwd()}/tmp/orgchart`;
+const checklistDir = `${process.cwd()}/tmp/checklists`;
 
 // Endpoints específicos para checklist
 router.post('/save', upload.array('files'), async (req, res) => {
@@ -132,7 +132,6 @@ router.get('/file/:filename', async (req, res) => {
 router.delete('/file/:filename', async (req, res) => {
     try {
         const { filename } = req.params;
-        const checklistDir = path.join(__dirname, '..', 'checklists');
         const filePath = path.join(checklistDir, filename);
 
         if (!fs.existsSync(filePath)) {
