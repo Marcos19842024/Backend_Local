@@ -164,12 +164,13 @@ const transporter = nodemailer.createTransport({
 
 // Función auxiliar para limpieza
 function cleanup(tmpZipPath: string | null) {
-
-    // 🧹 Borramos el zip temporal
     if (tmpZipPath && fs.existsSync(tmpZipPath)) {
-        fs.unlink(tmpZipPath, (err) => {
-            if (err) console.error("Error eliminando ZIP temporal:", err);
-        });
+        try {
+            fs.unlinkSync(tmpZipPath);
+            console.log("Archivo temporal eliminado:", tmpZipPath);
+        } catch (err) {
+            console.error("Error eliminando ZIP temporal:", err);
+        }
     }
 }
 
@@ -394,17 +395,18 @@ router.delete("/employees/:employeeName/:fileName", (req, res) => {
  * Genera un ZIP con el expediente con el expediente del empleado
  * http://localhost/orgchart/download&SendMailZip/:employeeName GET
  */
-router.post("/download-send-mail-zip/:employeeName", async (req, res) => {
+/**
+ * Solo enviar por correo (retorna JSON)
+ */
+router.post("/send-mail-zip/:employeeName", async (req, res) => {
     let tmpZipPath: string | null = null;
     
     try {
         const { employeeName } = req.params;
-        const { send, download, email } = req.body;
+        const { email } = req.body;
 
-        console.log('Solicitud recibida:', { employeeName, send, download, email });
-
-        if (send && !email) {
-            return res.status(400).json({ message: "Email es requerido para enviar" });
+        if (!email) {
+            return res.status(400).json({ message: "Email es requerido" });
         }
 
         // 📦 Crear directorio tmp si no existe
@@ -439,79 +441,129 @@ router.post("/download-send-mail-zip/:employeeName", async (req, res) => {
 
         console.log('ZIP creado en:', tmpZipPath);
 
-        // 🔔 Enviar correo si está solicitado
-        if (send) {
-            try {
-                const mailOptions = {
-                    from: process.env.EMAIL_USER,
-                    to: email,
-                    subject: `📦 Expediente de ${employeeName} (ZIP)`,
-                    text: `Se adjunta el expediente de ${employeeName} comprimido en ZIP.`,
-                    attachments: [
-                        {
-                            filename: `${employeeName}.zip`,
-                            path: tmpZipPath,
-                            contentType: "application/zip",
-                        },
-                    ],
-                };
-
-                await transporter.sendMail(mailOptions);
-                console.log('Correo enviado a:', email);
-            } catch (mailError) {
-                console.error('Error enviando correo:', mailError);
-                // No fallar completamente si solo falla el email
-            }
+        // Verificar que el archivo ZIP se creó correctamente
+        if (!fs.existsSync(tmpZipPath)) {
+            throw new Error("No se pudo crear el archivo ZIP");
         }
 
-        // 📤 Enviar respuesta al frontend
-        if (download) {
-            console.log('Enviando ZIP para descarga...');
+        // 🔔 Enviar correo
+        try {
+            const mailOptions = {
+                from: process.env.EMAIL_USER,
+                to: email,
+                subject: `📦 Expediente de ${employeeName} (ZIP)`,
+                text: `Se adjunta el expediente de ${employeeName} comprimido en ZIP.`,
+                attachments: [
+                    {
+                        filename: `${employeeName}.zip`,
+                        path: tmpZipPath, // ✅ Ahora tmpZipPath no es null
+                        contentType: "application/zip",
+                    },
+                ],
+            };
+
+            await transporter.sendMail(mailOptions);
+            console.log('Correo enviado a:', email);
             
-            // Configurar headers para descarga
-            res.setHeader('Content-Type', 'application/zip');
-            res.setHeader('Content-Disposition', `attachment; filename="${employeeName}.zip"`);
-            
-            // Stream el archivo directamente
-            const fileStream = fs.createReadStream(tmpZipPath);
-            fileStream.pipe(res);
-            
-            // Limpiar después de enviar
-            fileStream.on('close', () => {
-                cleanup(tmpZipPath);
-            });
-            
-            fileStream.on('error', (error) => {
-                console.error('Error streaming file:', error);
-                cleanup(tmpZipPath);
-                res.status(500).end();
-            });
-            
-        } else {
-            console.log('Enviando respuesta JSON...');
-            // Solo enviar respuesta JSON
             res.json({
                 success: true,
-                message: send ? "Expediente enviado por correo correctamente" : "Operación completada",
-                emailSent: send
+                message: "Expediente enviado por correo correctamente",
+                emailSent: true
             });
             
+        } catch (mailError) {
+            console.error('Error enviando correo:', mailError);
+            res.status(500).json({
+                success: false,
+                message: "Error al enviar el correo",
+                error: mailError instanceof Error ? mailError.message : String(mailError)
+            });
+        } finally {
             // Limpiar archivo temporal
             cleanup(tmpZipPath);
         }
 
     } catch (err) {
         console.error('Error en el proceso:', err);
-        
-        // Limpieza en caso de error
-        if (tmpZipPath && fs.existsSync(tmpZipPath)) {
-            try {
-                fs.unlinkSync(tmpZipPath);
-            } catch (unlinkError) {
-                console.error('Error limpiando archivo temporal:', unlinkError);
-            }
+        cleanup(tmpZipPath);
+        res.status(500).json({
+            success: false,
+            message: "Error al procesar la solicitud",
+            error: err instanceof Error ? err.message : String(err)
+        });
+    }
+});
+
+/**
+ * Solo descargar (retorna archivo ZIP)
+ */
+router.get("/download-zip/:employeeName", async (req, res) => {
+    let tmpZipPath: string | null = null;
+    
+    try {
+        const { employeeName } = req.params;
+
+        // 📦 Crear directorio tmp si no existe
+        const tmpDir = path.join(process.cwd(), "tmp");
+        if (!fs.existsSync(tmpDir)) {
+            fs.mkdirSync(tmpDir, { recursive: true });
         }
+
+        // 📂 Ruta del archivo ZIP
+        tmpZipPath = path.join(tmpDir, `${employeeName}_${Date.now()}.zip`);
+
+        // Verificar que el empleado existe
+        const employeePath = path.join(rutaBase, employeeName);
+        if (!fs.existsSync(employeePath)) {
+            return res.status(404).json({ message: "Empleado no encontrado" });
+        }
+
+        // Crear ZIP
+        const output = fs.createWriteStream(tmpZipPath);
+        const archive = archiver("zip", { zlib: { level: 9 } });
+
+        archive.pipe(output);
+        archive.directory(employeePath, employeeName);
         
+        await archive.finalize();
+
+        // Esperar a que se complete la escritura
+        await new Promise<void>((resolve, reject) => {
+            output.on('close', () => resolve());
+            output.on('error', (error) => reject(error));
+        });
+
+        console.log('ZIP creado en:', tmpZipPath);
+
+        // Verificar que el archivo ZIP se creó correctamente
+        if (!fs.existsSync(tmpZipPath)) {
+            throw new Error("No se pudo crear el archivo ZIP");
+        }
+
+        console.log('Enviando ZIP para descarga...');
+        
+        // Configurar headers para descarga
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${employeeName}.zip"`);
+        
+        // Stream el archivo directamente
+        const fileStream = fs.createReadStream(tmpZipPath);
+        fileStream.pipe(res);
+        
+        // Limpiar después de enviar
+        fileStream.on('close', () => {
+            cleanup(tmpZipPath);
+        });
+        
+        fileStream.on('error', (error) => {
+            console.error('Error streaming file:', error);
+            cleanup(tmpZipPath);
+            res.status(500).end();
+        });
+
+    } catch (err) {
+        console.error('Error en el proceso:', err);
+        cleanup(tmpZipPath);
         res.status(500).json({
             success: false,
             message: "Error al procesar la solicitud",
