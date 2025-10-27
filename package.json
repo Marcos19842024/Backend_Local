@@ -5,12 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/app.ts",
-    "start": "node start-with-ip.js",
-    "dev-ip": "nodemon start-with-ip.js",
-    "start-ip": "ts-node src/app.ts",
-    "build": "tsc -p .",
-    "build-start": "npm run build && node dist/app.js",
-    "production": "npm run build-start"
+    "start": "node start-with-ngrok.js",
+    "build": "tsc -p ."
   },
   "homepage": "./",
   "keywords": [],
