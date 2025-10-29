@@ -14,9 +14,35 @@ const upload = multer({
 const router: Router = Router();
 const checklistDir = `${process.cwd()}/tmp/checklists`;
 
+// MANEJAR PREFLIGHT REQUESTS EXPLÍCITAMENTE PARA CADA RUTA
+router.options('/save', (req, res) => {
+    console.log('✅ Preflight para /checklist/save');
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.status(200).end();
+});
+
+router.options('/files', (req, res) => {
+    console.log('✅ Preflight para /checklist/files');
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.status(200).end();
+});
+
+router.options('/file/:filename', (req, res) => {
+    console.log('✅ Preflight para /checklist/file/:filename');
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.status(200).end();
+});
+
 // Endpoints específicos para checklist
 router.post('/save', upload.array('files'), async (req, res) => {
     try {
+        console.log('📨 POST /checklist/save recibido');
         const files = req.files as Express.Multer.File[];
         if (!files || files.length === 0) {
             return res.status(400).json({ error: 'No files uploaded' });
@@ -47,6 +73,7 @@ router.post('/save', upload.array('files'), async (req, res) => {
             savedFiles.push(path.basename(finalFilePath));
         }
 
+        console.log('✅ Checklist guardado:', savedFiles);
         res.json({ 
             success: true, 
             message: 'Checklist guardado correctamente',
@@ -60,6 +87,8 @@ router.post('/save', upload.array('files'), async (req, res) => {
 
 router.get('/files', async (req, res) => {
     try {
+        console.log('📨 GET /checklist/files recibido');
+        
         if (!fs.existsSync(checklistDir)) {
             return res.json([]);
         }
@@ -82,6 +111,7 @@ router.get('/files', async (req, res) => {
         // Ordenar por fecha de modificación (más reciente primero)
         fileList.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
 
+        console.log(`✅ Enviando ${fileList.length} archivos de checklist`);
         res.json(fileList);
     } catch (error) {
         console.error('Error loading checklist files:', error);
@@ -92,6 +122,8 @@ router.get('/files', async (req, res) => {
 router.get('/file/:filename', async (req, res) => {
     try {
         const { filename } = req.params;
+        console.log('📨 GET /checklist/file/', filename);
+        
         const filePath = path.join(checklistDir, filename);
 
         if (!fs.existsSync(filePath)) {
@@ -132,6 +164,8 @@ router.get('/file/:filename', async (req, res) => {
 router.delete('/file/:filename', async (req, res) => {
     try {
         const { filename } = req.params;
+        console.log('📨 DELETE /checklist/file/', filename);
+        
         const filePath = path.join(checklistDir, filename);
 
         if (!fs.existsSync(filePath)) {
