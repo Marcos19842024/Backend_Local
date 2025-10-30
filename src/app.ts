@@ -162,6 +162,22 @@ app.get('/api/config', (req, res) => {
   res.json(config);
 });
 
+// ENDPOINT PARA APAGAR SERVIDOR DESDE FRONTEND
+app.post('/api/server/shutdown', (req, res) => {
+  console.log('🔄 Apagando servidor por solicitud del frontend...');
+  
+  res.json({ 
+    success: true, 
+    message: 'Servidor apagándose...' 
+  });
+  
+  // Apagar el servidor después de 2 segundos
+  setTimeout(() => {
+    console.log('👋 Servidor apagado por solicitud del frontend');
+    process.exit(0);
+  }, 2000);
+});
+
 // Static files - DESPUÉS de las rutas API
 app.use(history())
 app.use(express.static(path + 'dist/Ecommerce_Local/dist/'))

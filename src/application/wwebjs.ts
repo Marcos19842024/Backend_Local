@@ -1,50 +1,43 @@
-import { LeadStatus, LeadContact, LeadExternal } from "../domain/wwebjs";
+import Ws from "../infrastructure/repositories/ws";
 
 export class StatusCreate {
-    private leadStatus: LeadStatus;
-    constructor(repositories: LeadStatus) {
-        this.leadStatus = repositories;
+    constructor(private readonly leadExternal: Ws) {}
+
+    getLeadExternal(): Ws {
+        return this.leadExternal;
     }
 
-    public async getStatus(client: string,clientid: string) {
-        const responseStatus = await this.leadStatus.getSts(client,clientid);//checar status de la sesion de ws
-        return responseStatus;
+    async getStatus(user: string, userid: string): Promise<any> {
+        return await this.leadExternal.getSts(user, userid);
     }
 }
 
 export class ContactCreate {
-    private leadContact: LeadContact;
-    constructor(repositories: LeadContact) {
-        this.leadContact = repositories;
+    constructor(private readonly leadExternal: Ws) {}
+
+    getLeadExternal(): Ws {
+        return this.leadExternal;
     }
 
-    public async getContact() {
-        const responseContact = await this.leadContact.getContactList();//traer lista de contactos de la sesion de ws
-        return responseContact;
+    async getContact(): Promise<any> {
+        return await this.leadExternal.getContactList();
     }
 }
 
 export class LeadCreate {
-    private leadExternal: LeadExternal;
-    
-    constructor(repositories: LeadExternal) {
-        this.leadExternal = repositories;
+    constructor(private readonly leadExternal: Ws) {}
+
+    getLeadExternal(): Ws {
+        return this.leadExternal;
     }
 
-    public async sendMessage({
-        client,
-        clientid,
-        message,
-        phone,
-        pathtofiles,
-    }: {
+    async sendMessage(lead: {
         client: string;
         clientid: string;
-        message: Array<string>;
+        message: string[];
         phone: string;
-        pathtofiles: Array<string>;
-    }) {
-        const responseExSave = await this.leadExternal.sendMsg({ client, clientid, message, phone, pathtofiles });//enviar a ws
-        return responseExSave;
+        pathtofiles: string[];
+    }): Promise<any> {
+        return await this.leadExternal.sendMsg(lead);
     }
 }

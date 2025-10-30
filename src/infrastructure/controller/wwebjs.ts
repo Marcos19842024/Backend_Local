@@ -4,6 +4,10 @@ import { ContactCreate, LeadCreate, StatusCreate } from "../../application/wwebj
 export class StatusCtrl {
   constructor(private readonly statusCreator: StatusCreate) {}
 
+  getLeadExternal() {
+    return this.statusCreator.getLeadExternal();
+  }
+
   public statusCtrl = async (req: Request, res: Response) => {
     const client = req.params.user;
     const clientid = req.params.userid;
@@ -15,6 +19,10 @@ export class StatusCtrl {
 export class ContactCtrl {
   constructor(private readonly contactCreator: ContactCreate) {}
 
+  getLeadExternal() {
+    return this.contactCreator.getLeadExternal();
+  }
+
   public contactCtrl = async (req: Request, res: Response) => {
     const response = await this.contactCreator.getContact();
     res.json(response);
@@ -23,6 +31,10 @@ export class ContactCtrl {
 
 export class LeadCtrl {
   constructor(private readonly leadCreator: LeadCreate) {}
+
+  getLeadExternal() {
+    return this.leadCreator.getLeadExternal();
+  }
 
   public sendCtrl = async (req: Request, res: Response) => {
     const { message, phone, pathtofiles } = req.body;

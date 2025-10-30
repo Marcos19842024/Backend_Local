@@ -9,6 +9,7 @@ const router: Router = Router();
 const statusCtrl: StatusCtrl = container.get("status.ctrl");
 const contactCtrl: ContactCtrl = container.get("contact.ctrl");
 const leadCtrl: LeadCtrl = container.get("lead.ctrl");
+const whatsappInstance = leadCtrl.getLeadExternal();
 const path = `${process.cwd()}/tmp/media`;
 
 const diskstorage = multer.diskStorage({
@@ -21,6 +22,66 @@ const diskstorage = multer.diskStorage({
 const fileUpload = multer({
     storage: diskstorage
 }).array('files')
+
+/**
+ * ENDPOINTS NUEVOS PARA CONTROL MANUAL
+ */
+
+/**
+ * Iniciar WhatsApp manualmente
+ * POST http://localhost/start
+ */
+router.post("/start", logMiddleware, async (req, res) => {
+  try {
+    const result = await whatsappInstance.initializeWhatsApp();
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({
+      err: true,
+      status: "500",
+      statusText: `Error iniciando WhatsApp: ${error.message}`
+    });
+  }
+});
+
+/**
+ * Detener WhatsApp manualmente  
+ * POST http://localhost/stop
+ */
+router.post("/stop", logMiddleware, async (req, res) => {
+  try {
+    const result = await whatsappInstance.destroyWhatsApp();
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({
+      err: true,
+      status: "500", 
+      statusText: `Error deteniendo WhatsApp: ${error.message}`
+    });
+  }
+});
+
+/**
+ * Obtener estado completo de WhatsApp
+ * GET http://localhost/whatsapp/status
+ */
+router.get("/whatsapp/status", logMiddleware, async (req, res) => {
+  try {
+    const status = whatsappInstance.getWhatsAppStatus();
+    res.json({
+      err: false,
+      status: "200",
+      statusText: "Estado de WhatsApp",
+      data: status
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      err: true,
+      status: "500",
+      statusText: `Error obteniendo estado: ${error.message}`
+    });
+  }
+});
 
 /**
  * http://localhost/status/:user/:userid GET

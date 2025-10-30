@@ -9,39 +9,126 @@ class Ws implements LeadExternal {
   private user = process.env.USUARIO;
   private userid = process.env.USUARIOID;
   private status = false;
-  private cliente: Client;
+  private cliente: Client | null = null;
+  private isInitialized = false;
 
   constructor() {
-    this.cliente = new Client({
-      authStrategy: new LocalAuth({
-        clientId: this.user
-      }),
-      puppeteer: {
-        //executablePath: "/usr/bin/chromium-browser",
-        //headless: true,
-        args: [
-          "--disable-setuid-sandbox",
-          "--unhandled-rejections=strict",
-          "--no-sandbox",
-        ],
-      }
-    });
+    // NO inicializar automáticamente
+    console.log("✅ WhatsApp Client creado - Esperando activación manual");
+  }
 
-    this.cliente.initialize();
+  /**
+   * Iniciar WhatsApp manualmente
+   */
+  async initializeWhatsApp(): Promise<any> {
+    if (this.isInitialized && this.cliente) {
+      return Promise.resolve({
+        err: false,
+        status: "200",
+        statusText: "WhatsApp ya está inicializado"
+      });
+    }
 
-    this.cliente.on("ready", () => {
-      this.status = true;
-      console.log("LOGIN SUCCESS",this.user,this.userid);
-    });
+    try {
+      this.cliente = new Client({
+        authStrategy: new LocalAuth({
+          clientId: this.user
+        }),
+        puppeteer: {
+          //executablePath: "/usr/bin/chromium-browser",
+          //headless: true,
+          args: [
+            "--disable-setuid-sandbox",
+            "--unhandled-rejections=strict",
+            "--no-sandbox",
+          ],
+        }
+      });
 
-    this.cliente.on("auth_failure", () => {
+      this.cliente.on("ready", () => {
+        this.status = true;
+        this.isInitialized = true;
+        console.log("✅ LOGIN SUCCESS", this.user, this.userid);
+      });
+
+      this.cliente.on("auth_failure", () => {
+        this.status = false;
+        this.isInitialized = false;
+        console.log("❌ LOGIN FAIL");
+      });
+
+      this.cliente.on("qr", (qr) => {
+        this.generateImage(qr);
+      });
+
+      this.cliente.on("disconnected", () => {
+        this.status = false;
+        this.isInitialized = false;
+        this.cliente = null;
+        console.log("🔴 WhatsApp desconectado");
+      });
+
+      await this.cliente.initialize();
+      
+      return Promise.resolve({
+        err: false,
+        status: "200", 
+        statusText: "WhatsApp inicializándose..."
+      });
+
+    } catch (error: any) {
+      console.error("❌ Error inicializando WhatsApp:", error);
+      return Promise.resolve({
+        err: true,
+        status: "500",
+        statusText: `Error inicializando WhatsApp: ${error.message}`
+      });
+    }
+  }
+
+  /**
+   * Detener WhatsApp manualmente
+   */
+  async destroyWhatsApp(): Promise<any> {
+    if (!this.cliente) {
+      return Promise.resolve({
+        err: false,
+        status: "200",
+        statusText: "WhatsApp no está activo"
+      });
+    }
+
+    try {
+      await this.cliente.destroy();
+      this.cliente = null;
       this.status = false;
-      console.log("LOGIN FAIL");
-    });
+      this.isInitialized = false;
+      
+      console.log("✅ WhatsApp detenido manualmente");
+      return Promise.resolve({
+        err: false,
+        status: "200",
+        statusText: "WhatsApp detenido correctamente"
+      });
+    } catch (error: any) {
+      console.error("❌ Error deteniendo WhatsApp:", error);
+      return Promise.resolve({
+        err: true,
+        status: "500",
+        statusText: `Error deteniendo WhatsApp: ${error.message}`
+      });
+    }
+  }
 
-    this.cliente.on("qr", (qr) => {
-      this.generateImage(qr);
-    });
+  /**
+   * Obtener estado de WhatsApp
+   */
+  getWhatsAppStatus(): any {
+    return {
+      isActive: this.status,
+      isInitialized: this.isInitialized,
+      hasClient: !!this.cliente
+    };
   }
 
   /**
@@ -50,19 +137,18 @@ class Ws implements LeadExternal {
    * @returns
    */
   async getContactList(): Promise<any> {
-    if(!this.status) {
-      console.log(`Esperando la conexión con el cliente`);
+    if(!this.status || !this.cliente) {
       return Promise.resolve({
         err: true,
         status: "500",
-        statusText: `Esperando la conexión con el cliente`
+        statusText: `WhatsApp no está conectado. Estado: ${this.status}, Cliente: ${!!this.cliente}`
       })
     }
     try {
       const contacts = await this.cliente.getContacts();
       return Promise.resolve({
         err: false,
-        status: "400",
+        status: "200",
         statusText: contacts,
       })
     } catch (error) {
@@ -83,11 +169,21 @@ class Ws implements LeadExternal {
     pathtofiles: string[];
   }): Promise<any> {
     try {
+      // Verificar si WhatsApp está activo
+      if (!this.cliente || !this.status) {
+        return { 
+          err: true, 
+          status: "500", 
+          statusText: "WhatsApp no está conectado. Active WhatsApp primero." 
+        };
+      }
+
       const baseUrl = process.env.LOCAL_IP 
-      ? `http://${process.env.LOCAL_IP}:${process.env.PORT || '3001'}/`
-      : (process.env.URL || 'http://localhost:3001/');
+        ? `http://${process.env.LOCAL_IP}:${process.env.PORT || '3001'}/`
+        : (process.env.URL || 'http://localhost:3001/');
       const url = baseUrl + 'media/';
       const { client, clientid, message, phone, pathtofiles } = lead;
+      
       // Validaciones de seguridad
       if (client !== this.user || clientid !== this.userid) {
         const errorText = client !== this.user
@@ -96,31 +192,30 @@ class Ws implements LeadExternal {
         console.log(errorText);
         return { err: true, status: "500", statusText: errorText };
       }
-      // Estado de conexión
-      if (!this.status) {
-        const statusText = `Esperando la conexión con ${client}`;
-        console.log(statusText);
-        return { err: true, status: "500", statusText };
-      }
+
       const phoneId = `${phone}@c.us`;
       const tasks: Promise<any>[] = [];
+      
       // Enviar archivos multimedia (en paralelo)
       if (pathtofiles.length > 0) {
         const fileTasks = pathtofiles.map(async (file) => {
           const media = await MessageMedia.fromUrl(url + file, { filename: file });
-          return this.cliente.sendMessage(phoneId, media);
+          return this.cliente!.sendMessage(phoneId, media);
         });
         tasks.push(...fileTasks);
       }
+      
       // Enviar mensajes de texto (en paralelo)
       if (message.length > 0) {
         const messageTasks = message.map((msg) =>
-          this.cliente.sendMessage(phoneId, msg)
+          this.cliente!.sendMessage(phoneId, msg)
         );
         tasks.push(...messageTasks);
       }
+      
       // Ejecutar todas las tareas en paralelo
       const results = await Promise.allSettled(tasks);
+      
       // Log o análisis de resultados (opcional)
       results.forEach((res, i) => {
         if (res.status === 'fulfilled') {
@@ -129,6 +224,7 @@ class Ws implements LeadExternal {
           console.error(`❌ Error en mensaje ${i + 1}`, res.reason);
         }
       });
+      
       return { err: false, status: "200", statusText: "Mensajes procesados", results };
     } catch (e: any) {
       console.error('❌ Error en sendMsg:', e.message);
@@ -138,6 +234,7 @@ class Ws implements LeadExternal {
 
   async getSts(client: string, clientid: string): Promise<any> {
     let data;
+    
     if(client !== this.user) {
       data = {
         err: true,
@@ -147,6 +244,7 @@ class Ws implements LeadExternal {
       console.log(`Acceso denegado, ${client} no está registrado`);
       return Promise.resolve(data);
     }
+    
     if(clientid !== this.userid) {
       data = {
         err: true,
@@ -156,19 +254,23 @@ class Ws implements LeadExternal {
       console.log(`Acceso denegado, ${clientid} no está registrado`);
       return Promise.resolve(data);
     }
-    if(this.status) {
+    
+    if(this.status && this.cliente) {
       data = {
         err: false,
-        status: "400",
-        statusText: `Conectado con ${client}`
+        status: "200",
+        statusText: `Conectado con ${client}`,
+        whatsappStatus: this.getWhatsAppStatus()
       }
     } else {
       data = {
         err: true,
         status: "500",
-        statusText: `${client} Desconectado`
+        statusText: `${client} Desconectado`,
+        whatsappStatus: this.getWhatsAppStatus()
       }
     }
+    
     console.log(data.statusText);
     return Promise.resolve(data);
   }
@@ -177,10 +279,9 @@ class Ws implements LeadExternal {
     const path = `${process.cwd()}/tmp`;
     let qr_png = imageQr(base64, { type: "png", margin: 4 });
     qr_png.pipe(require("fs").createWriteStream(`${path}/qr.png`));
-    console.log(`⚡ Escanea el codigo QR que esta en la carepta tmp⚡`);
-    console.log(`⚡ Recuerda que el QR se actualiza cada minuto ⚡'`);
+    console.log(`⚡ Escanea el codigo QR que esta en la carpeta tmp ⚡`);
+    console.log(`⚡ Recuerda que el QR se actualiza cada minuto ⚡`);
   };
-
 }
 
 export default Ws;
