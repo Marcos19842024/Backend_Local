@@ -84,7 +84,7 @@ async function startServer() {
   // ✅ ACTUALIZAR .env DEL FRONTEND
   updateFrontendEnv(ip, availablePort);
   
-  console.log('🚀 Iniciando servidor...\n');
+  // console.log('🚀 Iniciando servidor...\n');
 
   // Abrir automáticamente en el navegador
   // setTimeout(() => {

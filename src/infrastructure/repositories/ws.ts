@@ -87,51 +87,6 @@ class Ws implements LeadExternal {
   }
 
   /**
-   * Detener WhatsApp manualmente
-   */
-  async destroyWhatsApp(): Promise<any> {
-    if (!this.cliente) {
-      return Promise.resolve({
-        err: false,
-        status: "200",
-        statusText: "WhatsApp no está activo"
-      });
-    }
-
-    try {
-      await this.cliente.destroy();
-      this.cliente = null;
-      this.status = false;
-      this.isInitialized = false;
-      
-      console.log("✅ WhatsApp detenido manualmente");
-      return Promise.resolve({
-        err: false,
-        status: "200",
-        statusText: "WhatsApp detenido correctamente"
-      });
-    } catch (error: any) {
-      console.error("❌ Error deteniendo WhatsApp:", error);
-      return Promise.resolve({
-        err: true,
-        status: "500",
-        statusText: `Error deteniendo WhatsApp: ${error.message}`
-      });
-    }
-  }
-
-  /**
-   * Obtener estado de WhatsApp
-   */
-  getWhatsAppStatus(): any {
-    return {
-      isActive: this.status,
-      isInitialized: this.isInitialized,
-      hasClient: !!this.cliente
-    };
-  }
-
-  /**
    * Enviar mensaje de WS
    * @param lead
    * @returns
@@ -260,14 +215,12 @@ class Ws implements LeadExternal {
         err: false,
         status: "200",
         statusText: `Conectado con ${client}`,
-        whatsappStatus: this.getWhatsAppStatus()
       }
     } else {
       data = {
         err: true,
         status: "500",
         statusText: `${client} Desconectado`,
-        whatsappStatus: this.getWhatsAppStatus()
       }
     }
     

@@ -1,4 +1,3 @@
-// app.ts - VERSIÓN COMPLETA CORREGIDA
 import "dotenv/config"
 import express from "express"
 import cors from "cors"
