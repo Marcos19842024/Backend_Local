@@ -4,12 +4,17 @@ import container from "../ioc";
 import fs from "fs";
 import multer from "multer";
 import { StatusCtrl, ContactCtrl, LeadCtrl } from "../controller/wwebjs";
+import { io } from "../../app"; // Ajusta la ruta según tu estructura
 
 const router: Router = Router();
 const statusCtrl: StatusCtrl = container.get("status.ctrl");
 const contactCtrl: ContactCtrl = container.get("contact.ctrl");
 const leadCtrl: LeadCtrl = container.get("lead.ctrl");
 const whatsappInstance = leadCtrl.getLeadExternal();
+
+// Configurar WebSocket en la instancia de WhatsApp
+whatsappInstance.setSocketIO(io);
+
 const path = `${process.cwd()}/tmp/media`;
 
 const diskstorage = multer.diskStorage({

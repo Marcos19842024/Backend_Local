@@ -4,11 +4,37 @@ import cors from "cors"
 import router from "./infrastructure/routes"
 import open from "open"
 import os from "os"
+import http from "http"
+import { Server as SocketIOServer } from "socket.io"
 
 const port = parseInt(process.env.PORT || '3001')
 const path = `${process.cwd()}/`
 const app = express()
 var history = require('connect-history-api-fallback')
+
+// Crear servidor HTTP para WebSockets
+const server = http.createServer(app)
+const io = new SocketIOServer(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+})
+
+// Configuración WebSocket para WhatsApp
+io.on('connection', (socket) => {
+  console.log('🔌 Cliente WebSocket conectado:', socket.id)
+  
+  socket.on('subscribe-whatsapp', () => {
+    socket.join('whatsapp-updates')
+    console.log('📱 Cliente suscrito a WhatsApp updates:', socket.id)
+  })
+  
+  socket.on('disconnect', () => {
+    console.log('🔌 Cliente WebSocket desconectado:', socket.id)
+  })
+})
 
 // Función para obtener IP automáticamente
 function getLocalIP(): string {
@@ -120,6 +146,25 @@ app.use(express.urlencoded({ extended: false, limit: '50mb' }))
 // ROUTES
 app.use(`/`, router)
 
+// Servir archivo QR estático con headers para evitar cache
+app.get('/qr.png', (req, res) => {
+  const qrPath = `${process.cwd()}/tmp/qr.png`;
+  
+  // Headers para evitar cache
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Content-Type', 'image/png');
+  
+  res.sendFile(qrPath, (err) => {
+    if (err) {
+      console.log('❌ QR no encontrado, generando placeholder...');
+      // Enviar QR placeholder o error 404
+      res.status(404).json({ error: 'QR no disponible' });
+    }
+  });
+});
+
 // Config endpoint - CORREGIDO PARA MIXED CONTENT
 app.get('/api/config', (req, res) => {
   const clientOrigin = req.headers.origin;
@@ -183,17 +228,18 @@ app.use(express.static(path + 'dist/Ecommerce_Local/dist/'))
 app.use(express.static(path + 'tmp'))
 
 // Configuración con IP automática
-const HOST = '0.0.0.0'  // Escucha en todas las interfaces
+const HOST = '0.0.0.0'
 const localIP = getLocalIP()
 const localURL = `http://${localIP}:${port}`
 const publicURL = `https://checklist.mitunnel.cloudflare.com`
 
-// Servidor HTTP
-app.listen(port, HOST, () => {
+// Usar server HTTP en lugar de app.listen
+server.listen(port, HOST, () => {
   console.log('🚀 Servidor ejecutándose:')
   console.log(`📍 Local: http://localhost:${port}`)
   console.log(`🌐 Red: ${localURL}`)
   console.log(`🌍 Público: ${publicURL}`)
+  console.log('✅ WebSocket activo para notificaciones en tiempo real')
   console.log('✅ CORS configurado para:')
   console.log('   - Ngrok (*.ngrok-free.app, *.ngrok.io, *.ngrok.app)')
   console.log('   - Localhost (3000, 3001, 5173)')
@@ -201,6 +247,9 @@ app.listen(port, HOST, () => {
   console.log('   - IPs locales (192.168.x.x, 10.x.x.x, 172.16-31.x.x)')
   console.log('====================================')
 })
+
+// Exportar io para usar en otras partes
+export { io };
 
 // Abrir automáticamente con la IP correcta
 open(localURL)

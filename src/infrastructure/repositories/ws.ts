@@ -1,6 +1,7 @@
 import { Client, LocalAuth, MessageMedia } from "whatsapp-web.js";
 import { image as imageQr } from "qr-image";
 import { LeadExternal } from "../../domain/wwebjs";
+import { Server } from "socket.io";
 
 /**
  * Extendemos los super poderes de whatsapp-web
@@ -11,10 +12,40 @@ class Ws implements LeadExternal {
   private status = false;
   private cliente: Client | null = null;
   private isInitialized = false;
+  private io: Server | null = null;
 
   constructor() {
-    // NO inicializar automáticamente
     console.log("✅ WhatsApp Client creado - Esperando activación manual");
+  }
+
+  // Método para configurar WebSocket server
+  setSocketIO(io: Server) {
+    this.io = io;
+    console.log("✅ WebSocket configurado para notificaciones QR");
+  }
+
+  // Método para notificar actualizaciones del QR
+  private notifyQrUpdate() {
+    if (this.io) {
+      this.io.emit('whatsapp-qr-updated', {
+        type: 'QR_UPDATED',
+        timestamp: new Date().toISOString(),
+        message: 'Nuevo código QR generado'
+      });
+      console.log('📢 Notificación QR enviada vía WebSocket');
+    }
+  }
+
+  // Método para notificar cambios de estado
+  private notifyStatusUpdate(status: string, message: string) {
+    if (this.io) {
+      this.io.emit('whatsapp-status', {
+        status: status,
+        message: message,
+        timestamp: new Date().toISOString()
+      });
+      console.log(`📢 Estado WhatsApp: ${status} - ${message}`);
+    }
   }
 
   /**
@@ -22,6 +53,7 @@ class Ws implements LeadExternal {
    */
   async initializeWhatsApp(): Promise<any> {
     if (this.isInitialized && this.cliente) {
+      this.notifyStatusUpdate('connected', 'WhatsApp ya está inicializado');
       return Promise.resolve({
         err: false,
         status: "200",
@@ -49,27 +81,35 @@ class Ws implements LeadExternal {
         this.status = true;
         this.isInitialized = true;
         console.log("✅ LOGIN SUCCESS", this.user, this.userid);
+        this.notifyStatusUpdate('connected', 'WhatsApp conectado correctamente');
       });
 
       this.cliente.on("auth_failure", () => {
         this.status = false;
         this.isInitialized = false;
         console.log("❌ LOGIN FAIL");
+        this.notifyStatusUpdate('auth_failure', 'Error de autenticación de WhatsApp');
       });
 
       this.cliente.on("qr", (qr) => {
+        console.log("🔄 Nuevo QR generado");
         this.generateImage(qr);
+        // Notificar a todos los clientes conectados
+        this.notifyQrUpdate();
+        this.notifyStatusUpdate('qr_generated', 'Nuevo código QR generado');
       });
 
-      this.cliente.on("disconnected", () => {
+      this.cliente.on("disconnected", (reason) => {
         this.status = false;
         this.isInitialized = false;
         this.cliente = null;
-        console.log("🔴 WhatsApp desconectado");
+        console.log("🔴 WhatsApp desconectado:", reason);
+        this.notifyStatusUpdate('disconnected', `WhatsApp desconectado: ${reason}`);
       });
 
       await this.cliente.initialize();
       
+      this.notifyStatusUpdate('initializing', 'WhatsApp inicializándose...');
       return Promise.resolve({
         err: false,
         status: "200", 
@@ -78,6 +118,7 @@ class Ws implements LeadExternal {
 
     } catch (error: any) {
       console.error("❌ Error inicializando WhatsApp:", error);
+      this.notifyStatusUpdate('error', `Error inicializando: ${error.message}`);
       return Promise.resolve({
         err: true,
         status: "500",
@@ -232,8 +273,8 @@ class Ws implements LeadExternal {
     const path = `${process.cwd()}/tmp`;
     let qr_png = imageQr(base64, { type: "png", margin: 4 });
     qr_png.pipe(require("fs").createWriteStream(`${path}/qr.png`));
-    console.log(`⚡ Escanea el codigo QR que esta en la carpeta tmp ⚡`);
-    console.log(`⚡ Recuerda que el QR se actualiza cada minuto ⚡`);
+    console.log(`⚡ Nuevo QR generado en: ${path}/qr.png`);
+    console.log(`⚡ Notificando a clientes conectados...`);
   };
 }
 
