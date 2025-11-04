@@ -252,4 +252,4 @@ server.listen(port, HOST, () => {
 export { io };
 
 // Abrir automáticamente con la IP correcta
-open(localURL)
+//open(localURL)
