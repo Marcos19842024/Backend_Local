@@ -5,8 +5,12 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/app.ts",
-    "start": "node start-with-ngrok.js",
-    "build": "tsc -p ."
+    "start": "node start-with-ngrok.js", 
+    "build": "tsc -p .",
+    "db:test": "ts-node src/scripts/testConnection.ts",
+    "db:seed": "ts-node src/scripts/seedDebtors.ts",
+    "db:start": "docker start mongodb",
+    "db:stop": "docker stop mongodb"
   },
   "homepage": "./",
   "keywords": [],

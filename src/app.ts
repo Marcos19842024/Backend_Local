@@ -5,11 +5,24 @@ import router from "./infrastructure/routes"
 import os from "os"
 import http from "http"
 import { Server as SocketIOServer } from "socket.io"
+import mongoose from "mongoose"
 
 const port = parseInt(process.env.PORT || '3001')
 const path = `${process.cwd()}/`
 const app = express()
 var history = require('connect-history-api-fallback')
+
+// Conectar a MongoDB al iniciar
+async function connectDB() {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce_local');
+    console.log('✅ MongoDB conectado');
+  } catch (error) {
+    console.error('❌ Error conectando a MongoDB:', error);
+  }
+}
+
+connectDB();
 
 // Crear servidor HTTP para WebSockets
 const server = http.createServer(app)
