@@ -44,93 +44,157 @@ function updateFrontendEnv(ngrokUrl) {
   }
 }
 
+// Función para iniciar la base de datos
+async function startDatabase() {
+  return new Promise((resolve, reject) => {
+    console.log('🗄️  Iniciando base de datos MongoDB...');
+    
+    const dbProcess = spawn('npm', ['run', 'db:start'], { 
+      stdio: 'inherit' 
+    });
+
+    dbProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ Base de datos iniciada correctamente');
+        // Esperar 3 segundos para que la BD esté completamente lista
+        setTimeout(resolve, 3000);
+      } else {
+        console.log('❌ Error al iniciar la base de datos');
+        reject(new Error('No se pudo iniciar la base de datos'));
+      }
+    });
+
+    dbProcess.on('error', (error) => {
+      console.log('❌ Error al ejecutar db:start:', error.message);
+      reject(error);
+    });
+  });
+}
+
+// Función para probar la conexión a la base de datos
+async function testDatabaseConnection() {
+  return new Promise((resolve, reject) => {
+    console.log('🔍 Probando conexión a la base de datos...');
+    
+    const testProcess = spawn('npm', ['run', 'db:test'], { 
+      stdio: 'inherit' 
+    });
+
+    testProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ Conexión a la base de datos exitosa');
+        resolve();
+      } else {
+        console.log('❌ Error en la conexión a la base de datos');
+        reject(new Error('Conexión a la base de datos falló'));
+      }
+    });
+
+    testProcess.on('error', (error) => {
+      console.log('❌ Error al probar conexión:', error.message);
+      reject(error);
+    });
+  });
+}
+
 console.log('🚀 INICIANDO SISTEMA CON NGROK');
 console.log('========================================\n');
 
 async function startSystem() {
   const port = 3001;
 
-  console.log('📦 Compilando TypeScript...');
-  
-  const buildProcess = spawn('npm', ['run', 'build'], { stdio: 'inherit' });
-  
-  buildProcess.on('close', (code) => {
-    if (code !== 0) {
-      console.log('❌ Error en la compilación');
-      return process.exit(1);
-    }
+  try {
+    // 1. Iniciar base de datos
+    await startDatabase();
     
-    console.log('✅ Compilación completada');
-    console.log('🚀 Iniciando servidor backend...\n');
+    // 2. Probar conexión a la base de datos
+    await testDatabaseConnection();
 
-    const backend = spawn('node', ['dist/app.js'], { 
-      stdio: 'inherit',
-      env: { 
-        ...process.env, 
-        PORT: port.toString(),
-        NODE_ENV: 'production'
+    console.log('📦 Compilando TypeScript...');
+    
+    const buildProcess = spawn('npm', ['run', 'build'], { stdio: 'inherit' });
+    
+    buildProcess.on('close', (code) => {
+      if (code !== 0) {
+        console.log('❌ Error en la compilación');
+        return process.exit(1);
       }
-    });
-
-    // Esperar un poco más para que el backend esté completamente listo
-    setTimeout(() => {
-      console.log('\n🌐 INICIANDO NGROK...');
-      console.log('   🔗 URL pública permanente\n');
       
-      const ngrok = spawn('ngrok', ['http', port.toString(), '--log=stdout'], { 
-        stdio: 'pipe'
-      });
+      console.log('✅ Compilación completada');
+      console.log('🚀 Iniciando servidor backend...\n');
 
-      let ngrokUrlFound = false;
-
-      ngrok.stdout.on('data', (data) => {
-        const output = data.toString();
-        console.log('Ngrok:', output); // Debug
-        
-        // Capturar la URL de Ngrok
-        if (output.includes('url=https://') && !ngrokUrlFound) {
-          const urlMatch = output.match(/url=(https:\/\/[a-zA-Z0-9-]+\.ngrok(-free)?\.app)/);
-
-          if (urlMatch) {
-            ngrokUrlFound = true;
-            const publicUrl = urlMatch[1];
-            console.log('\n🎉 ✅ URL PÚBLICA NGROK:', publicUrl);
-            console.log('========================================');
-            console.log('📱 ACCESO DESDE CUALQUIER DISPOSITIVO:');
-            console.log(`   Frontend: ${publicUrl}`);
-            console.log(`   API: ${publicUrl}/api/config`);
-            console.log(`   Checklist: ${publicUrl}/checklist`);
-            console.log('========================================\n');
-            
-            // ✅ ACTUALIZAR .env DEL FRONTEND CON LA URL DE NGROK
-            updateFrontendEnv(publicUrl);
-            
-            console.log('🔄 Espera 5 segundos para que el backend procese los cambios...');
-            
-            // 🔄 REINICIAR SERVIDOR FRONTEND PARA APLICAR CAMBIOS
-            setTimeout(() => {
-              restartFrontendServer();
-            }, 2000);
-
-            // Abrir en el navegador después de esperar
-            setTimeout(() => {
-              try {
-                console.log('🌐 Abriendo navegador...');
-                spawn('open', [publicUrl]);
-              } catch (err) {
-                console.log('📱 Abre manualmente:', publicUrl);
-              }
-            }, 5000);
-          }
+      const backend = spawn('node', ['dist/app.js'], { 
+        stdio: 'inherit',
+        env: { 
+          ...process.env, 
+          PORT: port.toString(),
+          NODE_ENV: 'production'
         }
       });
 
-      ngrok.stderr.on('data', (data) => {
-        console.error('Ngrok Error:', data.toString());
+      // Manejar errores del backend
+      backend.on('error', (error) => {
+        console.log('❌ Error al iniciar el backend:', error.message);
       });
 
-    }, 10000); // Aumentar a 10 segundos para asegurar que el backend esté listo
-  });
+      // Esperar un poco más para que el backend esté completamente listo
+      setTimeout(() => {
+        console.log('\n🌐 INICIANDO NGROK...');
+        console.log('   🔗 URL pública permanente\n');
+        
+        const ngrok = spawn('ngrok', ['http', port.toString(), '--log=stdout'], { 
+          stdio: 'pipe'
+        });
+
+        let ngrokUrlFound = false;
+
+        ngrok.stdout.on('data', (data) => {
+          const output = data.toString();
+          console.log('Ngrok:', output); // Debug
+          
+          // Capturar la URL de Ngrok
+          if (output.includes('url=https://') && !ngrokUrlFound) {
+            const urlMatch = output.match(/url=(https:\/\/[a-zA-Z0-9-]+\.ngrok(-free)?\.app)/);
+
+            if (urlMatch) {
+              ngrokUrlFound = true;
+              const publicUrl = urlMatch[1];
+              
+              // ✅ ACTUALIZAR .env DEL FRONTEND CON LA URL DE NGROK
+              updateFrontendEnv(publicUrl);
+              
+              console.log('🔄 Espera 5 segundos para que el backend procese los cambios...');
+              
+              // 🔄 REINICIAR SERVIDOR FRONTEND PARA APLICAR CAMBIOS
+              setTimeout(() => {
+                restartFrontendServer();
+              }, 2000);
+
+              // Abrir en el navegador después de esperar
+              setTimeout(() => {
+                try {
+                  console.log('🌐 Abriendo navegador...');
+                  spawn('open', [publicUrl]);
+                } catch (err) {
+                  console.log('📱 Abre manualmente:', publicUrl);
+                }
+              }, 5000);
+            }
+          }
+        });
+
+        ngrok.stderr.on('data', (data) => {
+          console.error('Ngrok Error:', data.toString());
+        });
+
+      }, 10000); // Aumentar a 10 segundos para asegurar que el backend esté listo
+    });
+
+  } catch (error) {
+    console.log('❌ Error crítico al iniciar el sistema:', error.message);
+    console.log('💡 Asegúrate de que Docker esté ejecutándose y que el contenedor "mongodb" exista');
+    process.exit(1);
+  }
 }
 
 function restartFrontendServer() {

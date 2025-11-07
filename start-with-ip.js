@@ -72,14 +72,14 @@ async function startServer() {
   const availablePort = await findAvailablePort(3001);
   const url = `http://${ip}:${availablePort}`;
 
-  console.log('========================================');
-  console.log('🛒 ECOMMERCE - DETECCIÓN AUTOMÁTICA DE IP');
-  console.log('========================================');
-  console.log(`📍 IP Detectada: ${ip}`);
-  console.log(`🌐 Puerto: ${availablePort}`);
-  console.log(`📱 URL de acceso:`);
-  console.log(`   ${url}`);
-  console.log('========================================');
+  // console.log('========================================');
+  // console.log('🛒 ECOMMERCE - DETECCIÓN AUTOMÁTICA DE IP');
+  // console.log('========================================');
+  // console.log(`📍 IP Detectada: ${ip}`);
+  // console.log(`🌐 Puerto: ${availablePort}`);
+  // console.log(`📱 URL de acceso:`);
+  // console.log(`   ${url}`);
+  // console.log('========================================');
   
   // ✅ ACTUALIZAR .env DEL FRONTEND
   updateFrontendEnv(ip, availablePort);

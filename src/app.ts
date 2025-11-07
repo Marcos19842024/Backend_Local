@@ -82,13 +82,13 @@ const corsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
     // Permitir requests sin origin (como los de ngrok o apps móviles)
     if (!origin) {
-      console.log('✅ CORS permitido (sin origin): posiblemente ngrok o app móvil');
+      // console.log('✅ CORS permitido (sin origin): posiblemente ngrok o app móvil');
       return callback(null, true);
     }
     
     // En desarrollo, permitir todos los orígenes
     if (process.env.NODE_ENV !== 'production') {
-      console.log('✅ CORS permitido (desarrollo):', origin);
+      // console.log('✅ CORS permitido (desarrollo):', origin);
       return callback(null, true);
     }
       
@@ -110,10 +110,10 @@ const corsOptions = {
       if (pattern instanceof RegExp) return pattern.test(origin);
       return false;
     })) {
-      console.log('✅ CORS permitido:', origin);
+      // console.log('✅ CORS permitido:', origin);
       callback(null, true);
     } else {
-      console.log('🚫 CORS bloqueado:', origin);
+      // console.log('🚫 CORS bloqueado:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -183,10 +183,10 @@ app.get('/api/config', (req, res) => {
   const clientHost = req.headers.host;
   const clientIP = req.ip || req.connection.remoteAddress;
   
-  console.log('🔧 Config solicitada desde:');
-  console.log('   - Origin:', clientOrigin || 'undefined');
-  console.log('   - Host:', clientHost);
-  console.log('   - IP:', clientIP);
+  // console.log('🔧 Config solicitada desde:');
+  // console.log('   - Origin:', clientOrigin || 'undefined');
+  // console.log('   - Host:', clientHost);
+  // console.log('   - IP:', clientIP);
   
   // Determinar la URL base para el cliente
   let apiUrl = `http://${getLocalIP()}:${port}`;
@@ -194,11 +194,11 @@ app.get('/api/config', (req, res) => {
   // Si el cliente viene de ngrok, usar HTTPS y el mismo host
   if (clientOrigin && clientOrigin.includes('ngrok')) {
     apiUrl = clientOrigin; // Esto ya incluye https://
-    console.log('   🔄 Usando URL ngrok (desde origin):', apiUrl);
+    // console.log('   🔄 Usando URL ngrok (desde origin):', apiUrl);
   } else if (clientHost && clientHost.includes('ngrok')) {
     // Si el host es de ngrok pero el origin es undefined
     apiUrl = `https://${clientHost}`;
-    console.log('   🔄 Usando host ngrok con HTTPS:', apiUrl);
+    // console.log('   🔄 Usando host ngrok con HTTPS:', apiUrl);
   }
   
   const config = {
@@ -214,25 +214,25 @@ app.get('/api/config', (req, res) => {
     }
   };
   
-  console.log('✅ Configuración enviada:', config.apiUrl);
+  // console.log('✅ Configuración enviada:', config.apiUrl);
   res.json(config);
 });
 
-// ENDPOINT PARA APAGAR SERVIDOR DESDE FRONTEND
-app.post('/api/server/shutdown', (req, res) => {
-  console.log('🔄 Apagando servidor por solicitud del frontend...');
+// // ENDPOINT PARA APAGAR SERVIDOR DESDE FRONTEND
+// app.post('/api/server/shutdown', (req, res) => {
+//   console.log('🔄 Apagando servidor por solicitud del frontend...');
   
-  res.json({ 
-    success: true, 
-    message: 'Servidor apagándose...' 
-  });
+//   res.json({ 
+//     success: true, 
+//     message: 'Servidor apagándose...' 
+//   });
   
-  // Apagar el servidor después de 2 segundos
-  setTimeout(() => {
-    console.log('👋 Servidor apagado por solicitud del frontend');
-    process.exit(0);
-  }, 2000);
-});
+//   // Apagar el servidor después de 2 segundos
+//   setTimeout(() => {
+//     console.log('👋 Servidor apagado por solicitud del frontend');
+//     process.exit(0);
+//   }, 2000);
+// });
 
 // Static files - DESPUÉS de las rutas API
 app.use(history())
@@ -247,17 +247,17 @@ const publicURL = `https://checklist.mitunnel.cloudflare.com`
 
 // Usar server HTTP en lugar de app.listen
 server.listen(port, HOST, () => {
-  console.log('🚀 Servidor ejecutándose:')
-  console.log(`📍 Local: http://localhost:${port}`)
-  console.log(`🌐 Red: ${localURL}`)
-  console.log(`🌍 Público: ${publicURL}`)
-  console.log('✅ WebSocket activo para notificaciones en tiempo real')
-  console.log('✅ CORS configurado para:')
-  console.log('   - Ngrok (*.ngrok-free.app, *.ngrok.io, *.ngrok.app)')
-  console.log('   - Localhost (3000, 3001, 5173)')
-  console.log('   - Requests sin origin (ngrok/apps móviles)')
-  console.log('   - IPs locales (192.168.x.x, 10.x.x.x, 172.16-31.x.x)')
-  console.log('====================================')
+  // console.log('🚀 Servidor ejecutándose:')
+  // console.log(`📍 Local: http://localhost:${port}`)
+  // console.log(`🌐 Red: ${localURL}`)
+  // console.log(`🌍 Público: ${publicURL}`)
+  // console.log('✅ WebSocket activo para notificaciones en tiempo real')
+  // console.log('✅ CORS configurado para:')
+  // console.log('   - Ngrok (*.ngrok-free.app, *.ngrok.io, *.ngrok.app)')
+  // console.log('   - Localhost (3000, 3001, 5173)')
+  // console.log('   - Requests sin origin (ngrok/apps móviles)')
+  // console.log('   - IPs locales (192.168.x.x, 10.x.x.x, 172.16-31.x.x)')
+  // console.log('====================================')
 })
 
 // Exportar io para usar en otras partes
