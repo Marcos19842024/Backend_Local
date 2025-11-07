@@ -2,76 +2,162 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Función para actualizar el .env del frontend con la URL de ngrok
-function updateFrontendEnv(ngrokUrl) {
-  try {
-    const frontendEnvPath = path.join(__dirname, 'dist/Ecommerce_Local/.env');
-    
-    // Asegurar que la URL use HTTPS para ngrok
-    let backendUrl = ngrokUrl;
-    if (ngrokUrl.startsWith('http://') && ngrokUrl.includes('ngrok')) {
-      // Forzar HTTPS para ngrok
-      backendUrl = ngrokUrl.replace('http://', 'https://');
-      console.log('🔄 Convirtiendo ngrok a HTTPS:', backendUrl);
-    }
-    
-    backendUrl = `${backendUrl}/`;
-    
-    // Leer el archivo .env actual
-    let envContent = '';
-    if (fs.existsSync(frontendEnvPath)) {
-      envContent = fs.readFileSync(frontendEnvPath, 'utf8');
-    }
-
-    // Actualizar o agregar la variable VITE_URL_SERVER
-    if (envContent.includes('VITE_URL_SERVER=')) {
-      // Reemplazar la URL existente
-      envContent = envContent.replace(
-        /VITE_URL_SERVER=.*/,
-        `VITE_URL_SERVER=${backendUrl}`
-      );
-    } else {
-      // Agregar nueva variable
-      envContent += `\nVITE_URL_SERVER=${backendUrl}\n`;
-    }
-    
-    // Escribir el archivo actualizado
-    fs.writeFileSync(frontendEnvPath, envContent, 'utf8');
-    console.log('✅ Frontend .env actualizado con URL Ngrok:', backendUrl);
-    
-  } catch (error) {
-    console.log('⚠️  No se pudo actualizar el .env del frontend:', error.message);
-  }
-}
-
-// Función para iniciar la base de datos
-async function startDatabase() {
+// Función para verificar e iniciar MongoDB local con Brew
+async function startMongoDBLocal() {
   return new Promise((resolve, reject) => {
-    console.log('🗄️  Iniciando base de datos MongoDB...');
+    console.log('🔍 Verificando estado de MongoDB local...');
     
-    const dbProcess = spawn('npm', ['run', 'db:start'], { 
-      stdio: 'inherit' 
+    // Primero verificar si MongoDB ya está corriendo
+    const checkProcess = spawn('brew', ['services', 'list'], { 
+      stdio: 'pipe' 
     });
 
-    dbProcess.on('close', (code) => {
-      if (code === 0) {
-        console.log('✅ Base de datos iniciada correctamente');
-        // Esperar 3 segundos para que la BD esté completamente lista
-        setTimeout(resolve, 3000);
-      } else {
-        console.log('❌ Error al iniciar la base de datos');
-        reject(new Error('No se pudo iniciar la base de datos'));
+    let mongoRunning = false;
+    let mongoInstalled = false;
+
+    checkProcess.stdout.on('data', (data) => {
+      const output = data.toString();
+      if (output.includes('mongodb/brew/mongodb-community') || output.includes('mongodb-community')) {
+        mongoInstalled = true;
+        if (output.includes('started') || output.includes('running')) {
+          mongoRunning = true;
+        }
       }
     });
 
-    dbProcess.on('error', (error) => {
-      console.log('❌ Error al ejecutar db:start:', error.message);
+    checkProcess.on('close', () => {
+      if (!mongoInstalled) {
+        console.log('❌ MongoDB no está instalado con Brew');
+        console.log('💡 Ejecuta: brew install mongodb/brew/mongodb-community');
+        reject(new Error('MongoDB no instalado'));
+        return;
+      }
+
+      if (mongoRunning) {
+        console.log('✅ MongoDB ya está ejecutándose');
+        resolve();
+      } else {
+        console.log('🚀 Iniciando MongoDB con Brew services...');
+        startMongoService().then(resolve).catch(reject);
+      }
+    });
+
+    checkProcess.on('error', (error) => {
+      console.log('❌ Error al verificar servicios Brew:', error.message);
       reject(error);
     });
   });
 }
 
-// Función para probar la conexión a la base de datos
+// Función para iniciar el servicio MongoDB
+async function startMongoService() {
+  return new Promise((resolve, reject) => {
+    const startProcess = spawn('brew', ['services', 'start', 'mongodb/brew/mongodb-community'], { 
+      stdio: 'inherit' 
+    });
+
+    startProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ MongoDB iniciado correctamente');
+        console.log('⏳ Esperando que MongoDB esté listo...');
+        // Esperar 5 segundos para que MongoDB esté completamente inicializado
+        setTimeout(resolve, 5000);
+      } else {
+        // Intentar método alternativo
+        console.log('🔄 Intentando método alternativo...');
+        startMongoManual().then(resolve).catch(reject);
+      }
+    });
+
+    startProcess.on('error', (error) => {
+      console.log('❌ Error al iniciar con brew services:', error.message);
+      startMongoManual().then(resolve).catch(reject);
+    });
+  });
+}
+
+// Método alternativo para iniciar MongoDB
+async function startMongoManual() {
+  return new Promise((resolve, reject) => {
+    console.log('🔄 Iniciando MongoDB manualmente...');
+    
+    const manualProcess = spawn('mongod', ['--config', '/usr/local/etc/mongod.conf'], { 
+      stdio: 'inherit',
+      detached: true // Ejecutar en proceso separado
+    });
+
+    manualProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ MongoDB iniciado manualmente');
+        setTimeout(resolve, 5000);
+      } else {
+        console.log('⚠️  Verificando si MongoDB ya está ejecutándose en segundo plano...');
+        // Verificar conexión directa
+        testMongoConnection().then(resolve).catch(reject);
+      }
+    });
+
+    manualProcess.on('error', (error) => {
+      console.log('❌ Error al iniciar MongoDB manualmente:', error.message);
+      testMongoConnection().then(resolve).catch(reject);
+    });
+  });
+}
+
+// Función para probar conexión directa a MongoDB
+async function testMongoConnection() {
+  return new Promise((resolve, reject) => {
+    console.log('🔍 Probando conexión directa a MongoDB...');
+    
+    const net = require('net');
+    const client = new net.Socket();
+    
+    client.setTimeout(5000);
+    
+    client.connect(27017, 'localhost', () => {
+      console.log('✅ Conexión exitosa a MongoDB en localhost:27017');
+      client.destroy();
+      resolve();
+    });
+    
+    client.on('timeout', () => {
+      console.log('❌ Timeout conectando a MongoDB');
+      client.destroy();
+      reject(new Error('No se pudo conectar a MongoDB'));
+    });
+    
+    client.on('error', (error) => {
+      console.log('❌ Error de conexión a MongoDB:', error.message);
+      client.destroy();
+      
+      // Preguntar si continuar sin base de datos
+      console.log('\n💡 ¿Quieres continuar sin base de datos? (s/n)');
+      process.stdin.once('data', (data) => {
+        const answer = data.toString().trim().toLowerCase();
+        if (answer === 's' || answer === 'y' || answer === 'si' || answer === 'yes') {
+          console.log('🔄 Continuando sin base de datos...');
+          resolve();
+        } else {
+          reject(new Error('Conexión a MongoDB falló'));
+        }
+      });
+    });
+  });
+}
+
+// Función para iniciar base de datos
+async function startDatabase() {
+  try {
+    await startMongoDBLocal();
+    console.log('✅ Base de datos MongoDB lista');
+  } catch (error) {
+    console.log('⚠️  No se pudo iniciar MongoDB:', error.message);
+    console.log('🔄 Intentando continuar sin verificación de base de datos...');
+    // Continuar sin base de datos
+  }
+}
+
+// Función para probar conexión a la base de datos
 async function testDatabaseConnection() {
   return new Promise((resolve, reject) => {
     console.log('🔍 Probando conexión a la base de datos...');
@@ -86,7 +172,18 @@ async function testDatabaseConnection() {
         resolve();
       } else {
         console.log('❌ Error en la conexión a la base de datos');
-        reject(new Error('Conexión a la base de datos falló'));
+        
+        // Preguntar si continuar sin base de datos
+        console.log('💡 ¿Quieres continuar sin base de datos? (s/n)');
+        process.stdin.once('data', (data) => {
+          const answer = data.toString().trim().toLowerCase();
+          if (answer === 's' || answer === 'y' || answer === 'si' || answer === 'yes') {
+            console.log('🔄 Continuando sin base de datos...');
+            resolve();
+          } else {
+            reject(new Error('Conexión a la base de datos falló'));
+          }
+        });
       }
     });
 
@@ -97,6 +194,41 @@ async function testDatabaseConnection() {
   });
 }
 
+// Función para actualizar el .env del frontend con la URL de ngrok
+function updateFrontendEnv(ngrokUrl) {
+  try {
+    const frontendEnvPath = path.join(__dirname, 'dist/Ecommerce_Local/.env');
+    
+    let backendUrl = ngrokUrl;
+    if (ngrokUrl.startsWith('http://') && ngrokUrl.includes('ngrok')) {
+      backendUrl = ngrokUrl.replace('http://', 'https://');
+      console.log('🔄 Convirtiendo ngrok a HTTPS:', backendUrl);
+    }
+    
+    backendUrl = `${backendUrl}/`;
+    
+    let envContent = '';
+    if (fs.existsSync(frontendEnvPath)) {
+      envContent = fs.readFileSync(frontendEnvPath, 'utf8');
+    }
+
+    if (envContent.includes('VITE_URL_SERVER=')) {
+      envContent = envContent.replace(
+        /VITE_URL_SERVER=.*/,
+        `VITE_URL_SERVER=${backendUrl}`
+      );
+    } else {
+      envContent += `\nVITE_URL_SERVER=${backendUrl}\n`;
+    }
+    
+    fs.writeFileSync(frontendEnvPath, envContent, 'utf8');
+    console.log('✅ Frontend .env actualizado con URL Ngrok:', backendUrl);
+    
+  } catch (error) {
+    console.log('⚠️  No se pudo actualizar el .env del frontend:', error.message);
+  }
+}
+
 console.log('🚀 INICIANDO SISTEMA CON NGROK');
 console.log('========================================\n');
 
@@ -104,7 +236,7 @@ async function startSystem() {
   const port = 3001;
 
   try {
-    // 1. Iniciar base de datos
+    // 1. Iniciar base de datos MongoDB local
     await startDatabase();
     
     // 2. Probar conexión a la base de datos
@@ -132,12 +264,7 @@ async function startSystem() {
         }
       });
 
-      // Manejar errores del backend
-      backend.on('error', (error) => {
-        console.log('❌ Error al iniciar el backend:', error.message);
-      });
-
-      // Esperar un poco más para que el backend esté completamente listo
+      // Esperar para que el backend esté listo
       setTimeout(() => {
         console.log('\n🌐 INICIANDO NGROK...');
         console.log('   🔗 URL pública permanente\n');
@@ -150,9 +277,8 @@ async function startSystem() {
 
         ngrok.stdout.on('data', (data) => {
           const output = data.toString();
-          console.log('Ngrok:', output); // Debug
+          console.log('Ngrok:', output);
           
-          // Capturar la URL de Ngrok
           if (output.includes('url=https://') && !ngrokUrlFound) {
             const urlMatch = output.match(/url=(https:\/\/[a-zA-Z0-9-]+\.ngrok(-free)?\.app)/);
 
@@ -160,17 +286,14 @@ async function startSystem() {
               ngrokUrlFound = true;
               const publicUrl = urlMatch[1];
               
-              // ✅ ACTUALIZAR .env DEL FRONTEND CON LA URL DE NGROK
               updateFrontendEnv(publicUrl);
               
               console.log('🔄 Espera 5 segundos para que el backend procese los cambios...');
               
-              // 🔄 REINICIAR SERVIDOR FRONTEND PARA APLICAR CAMBIOS
               setTimeout(() => {
                 restartFrontendServer();
               }, 2000);
 
-              // Abrir en el navegador después de esperar
               setTimeout(() => {
                 try {
                   console.log('🌐 Abriendo navegador...');
@@ -187,12 +310,15 @@ async function startSystem() {
           console.error('Ngrok Error:', data.toString());
         });
 
-      }, 10000); // Aumentar a 10 segundos para asegurar que el backend esté listo
+      }, 10000);
     });
 
   } catch (error) {
     console.log('❌ Error crítico al iniciar el sistema:', error.message);
-    console.log('💡 Asegúrate de que Docker esté ejecutándose y que el contenedor "mongodb" exista');
+    console.log('\n💡 SOLUCIONES:');
+    console.log('   1. Iniciar MongoDB manualmente: brew services start mongodb/brew/mongodb-community');
+    console.log('   2. Verificar estado: brew services list');
+    console.log('   3. O ejecutar sin base de datos (funcionalidad limitada)');
     process.exit(1);
   }
 }
@@ -201,7 +327,6 @@ function restartFrontendServer() {
   try {
     console.log('🔄 Reiniciando servidor frontend...');
     
-    // Enviar señal para recargar la configuración
     const restartProcess = spawn('npm', ['run', 'dev'], { 
       stdio: 'inherit',
       cwd: path.join(__dirname, 'dist/Ecommerce_Local')
