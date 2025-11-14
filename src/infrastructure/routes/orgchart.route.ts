@@ -184,10 +184,11 @@ const myDocumentsStorage = multer.diskStorage({
         
         // Mapear los nombres de carpetas a las rutas reales
         const folderMap = {
-            'contratacion': 'orgchart/mydocuments/contratacion',
-            'leyes': 'orgchart/mydocuments/leyes, procedimientos y procedimientos',
-            'reportes': 'orgchart/mydocuments/reportes y memorandums',
-            'router': 'orgchart/mydocuments/router'
+            'contratacion': 'mydocuments/contratacion',
+            'leyes': 'mydocuments/leyes, procedimientos y protocolos',
+            'reportes': 'mydocuments/reportes y memorandums',
+            'router': 'mydocuments/router',
+            'otros': 'mydocuments/otros',
         };
 
         const actualFolderPath = folderMap[folderName];
@@ -250,42 +251,52 @@ const uploadMyDocuments = multer({
 /**
  * Función recursiva para obtener la estructura de carpetas y archivos
  */
-const getFolderStructure = (folderPath: string, basePath: string, folderName: string) => {
-    const structure: any = {
-        name: path.basename(folderPath),
-        path: folderPath.replace(basePath, '').replace(/\\/g, '/'),
-        type: 'folder',
-        items: []
-    };
+const getFolderStructure = (folderPath, basePath, folderName) => {
+    if (!fs.existsSync(folderPath)) {
+        return { name: folderName, type: 'folder', items: [] };
+    }
 
-    if (fs.existsSync(folderPath)) {
-        const items = fs.readdirSync(folderPath, { withFileTypes: true });
-        
+    const structure = { name: folderName, type: 'folder', items: [] };
+
+    const processDir = (dir, relPath = '') => {
+        const items = fs.readdirSync(dir, { withFileTypes: true });
+        const result = [];
+
         items.forEach(item => {
-            const itemPath = path.join(folderPath, item.name);
-        
+            if (item.name.startsWith('.')) return;
+            
+            const fullPath = path.join(dir, item.name);
+            const newRelPath = relPath ? `${relPath}/${item.name}` : item.name;
+
             if (item.isDirectory()) {
-                // Es una subcarpeta - llamada recursiva
-                const subFolder = getFolderStructure(itemPath, basePath, folderName);
-                structure.items.push(subFolder);
-            } else if (item.isFile() && !item.name.startsWith('.')) {
-                // Es un archivo
-                const stats = fs.statSync(itemPath);
-                const fileExt = path.extname(item.name).toLowerCase().replace('.', '');
-                
-                structure.items.push({
+                result.push({
                     name: item.name,
-                    path: `/orgchart/mydocuments/${folderName}${structure.path}/${item.name}`.replace(/\/\//g, '/'),
-                    fullPath: structure.path ? `${structure.path}/${item.name}` : item.name,
+                    type: 'folder',
+                    items: processDir(fullPath, newRelPath)
+                });
+            } else {
+                const stats = fs.statSync(fullPath);
+                const ext = path.extname(item.name).toLowerCase().replace('.', '');
+                
+                // 🔥 URL COMPLETA CON TODAS LAS SUBCARPETAS
+                const url = `/orgchart/mydocuments/${folderName}/${newRelPath}`;
+                
+                result.push({
+                    name: item.name,
+                    path: url,
+                    fullPath: newRelPath,
                     size: stats.size,
                     uploadDate: stats.mtime,
-                    type: fileExt,
+                    type: ext,
                     isFile: true
                 });
             }
         });
-    }
-    
+
+        return result;
+    };
+
+    structure.items = processDir(folderPath);
     return structure;
 };
 
@@ -301,6 +312,22 @@ const createSubfolder = (folderPath: string, subfolderName: string) => {
         return true;
     }
     return false;
+};
+
+// CORREGIR en orgchart.route.js
+const getFolderMap = () => {
+    return {
+        'contratacion': 'mydocuments/contratacion',
+        'leyes': 'mydocuments/leyes, procedimientos y protocolos',
+        'reportes': 'mydocuments/reportes y memorandums',
+        'router': 'mydocuments/router',
+        'otros': 'mydocuments/otros',
+    };
+};
+
+const getFolderPath = (folderName: string): string | null => {
+    const folderMap = getFolderMap();
+    return folderMap[folderName] || null;
 };
 
 /**
@@ -714,15 +741,8 @@ router.get("/download-zip/:employeeName", async (req, res) => {
 router.get("/mydocuments/:folderName", (req, res) => {
     try {
         const folderName = req.params.folderName;
-        // Mapear los nombres de carpetas a las rutas reales
-        const folderMap = {
-            'contratacion': 'mydocuments/contratacion',
-            'leyes': 'mydocuments/leyes, procedimientos y protocolos',
-            'reportes': 'mydocuments/reportes y memorandums',
-            'router': 'mydocuments/router'
-        };
 
-        const actualFolderPath = folderMap[folderName];
+        const actualFolderPath = getFolderPath(folderName);
         if (!actualFolderPath) {
             return res.status(404).json({ error: "Carpeta no encontrada" });
         }
@@ -764,16 +784,8 @@ router.get("/mydocuments/:folderName", (req, res) => {
 router.get("/mydocuments/:folderName/:fileName", (req, res) => {
     try {
         const { folderName, fileName } = req.params;
-        
-        // Mapear los nombres de carpetas a las rutas reales
-        const folderMap = {
-            'contratacion': 'mydocuments/contratacion',
-            'leyes': 'mydocuments/leyes, procedimientos y procedimientos',
-            'reportes': 'mydocuments/reportes y memorandums',
-            'router': 'mydocuments/router'
-        };
 
-        const actualFolderPath = folderMap[folderName];
+        const actualFolderPath = getFolderPath(folderName);
         if (!actualFolderPath) {
             return res.status(404).json({ error: "Carpeta no encontrada" });
         }
@@ -803,6 +815,52 @@ router.get("/mydocuments/:folderName/:fileName", (req, res) => {
         }
     } catch (error) {
         console.error("Error al obtener archivo de MyDocuments:", error);
+        res.status(500).json({ error: "Error al obtener el archivo" });
+    }
+});
+
+// Manejar archivos en subcarpetas
+router.get("/mydocuments/:folderName/*", (req, res) => {
+    try {
+        const { folderName } = req.params;
+        const filePath = req.params[0]; // Esto captura todo después de folderName/
+
+        const actualFolderPath = getFolderPath(folderName);
+        if (!actualFolderPath) {
+            return res.status(404).json({ error: "Carpeta no encontrada" });
+        }
+
+        const fullFilePath = path.join(ruta, actualFolderPath, filePath);
+        console.log(`Buscando archivo en MyDocuments (subcarpeta): ${fullFilePath}`);
+
+        if (!fs.existsSync(fullFilePath)) {
+            console.log(`Archivo no encontrado: ${fullFilePath}`);
+            return res.status(404).json({ error: "Archivo no encontrado" });
+        }
+
+        // Verificar que es un archivo y no un directorio
+        const stats = fs.statSync(fullFilePath);
+        if (stats.isDirectory()) {
+            return res.status(400).json({ error: "La ruta especificada es una carpeta, no un archivo" });
+        }
+
+        // Si es un archivo JSON, leer y parsear
+        if (fullFilePath.endsWith('.json')) {
+            const fileContent = fs.readFileSync(fullFilePath, 'utf-8');
+            try {
+                const jsonData = JSON.parse(fileContent);
+                console.log(`JSON cargado correctamente de MyDocuments: ${filePath}`);
+                res.json(jsonData);
+            } catch (parseError) {
+                console.error(`Error parseando JSON ${filePath}:`, parseError);
+                res.status(500).json({ error: "Error al parsear el archivo JSON" });
+            }
+        } else {
+            // Para otros archivos, enviar el archivo directamente
+            res.sendFile(fullFilePath);
+        }
+    } catch (error) {
+        console.error("Error al obtener archivo de MyDocuments (subcarpeta):", error);
         res.status(500).json({ error: "Error al obtener el archivo" });
     }
 });
@@ -840,16 +898,8 @@ router.post("/mydocuments/:folderName", uploadMyDocuments.single('file'), (req, 
 router.delete("/mydocuments/:folderName/:fileName", (req, res) => {
     try {
         const { folderName, fileName } = req.params;
-        
-        // Mapear los nombres de carpetas a las rutas reales
-        const folderMap = {
-            'contratacion': 'mydocuments/contratacion',
-            'leyes': 'mydocuments/leyes, procedimientos y procedimientos',
-            'reportes': 'mydocuments/reportes y memorandums',
-            'router': 'mydocuments/router'
-        };
 
-        const actualFolderPath = folderMap[folderName];
+        const actualFolderPath = getFolderPath(folderName);
         if (!actualFolderPath) {
             return res.status(404).json({ error: "Carpeta no encontrada" });
         }
@@ -885,9 +935,10 @@ router.get("/mydocuments", (req, res) => {
             // Crear subcarpetas
             const subfolders = [
                 'contratacion',
-                'leyes, procedimientos y procedimientos',
+                'leyes, procedimientos y protocolos',
                 'reportes y memorandums',
-                'router'
+                'router',
+                'otros'
             ];
             
             subfolders.forEach(folder => {
@@ -932,43 +983,6 @@ router.get("/mydocuments", (req, res) => {
 });
 
 /**
- * Obtener estructura completa de carpetas y subcarpetas
- * http://localhost/orgchart/mydocuments-structure/:folderName GET
- */
-router.get("/mydocuments-structure/:folderName", (req, res) => {
-    try {
-        const folderName = req.params.folderName;
-        
-        // Mapear los nombres de carpetas a las rutas reales
-        const folderMap = {
-            'contratacion': 'mydocuments/contratacion',
-            'leyes': 'mydocuments/leyes, procedimientos y procedimientos',
-            'reportes': 'mydocuments/reportes y memorandums',
-            'router': 'mydocuments/router'
-        };
-
-        const actualFolderPath = folderMap[folderName];
-        if (!actualFolderPath) {
-            return res.status(404).json({ error: "Carpeta no encontrada" });
-        }
-
-        const folderPath = path.join(ruta, actualFolderPath);
-        
-        if (!fs.existsSync(folderPath)) {
-            fs.mkdirSync(folderPath, { recursive: true });
-            return res.json({ name: folderName, path: '', type: 'folder', items: [] });
-        }
-
-        const structure = getFolderStructure(folderPath, path.join(ruta, 'mydocuments'), folderName);
-        res.json(structure);
-        
-    } catch (error) {
-        console.error("Error al obtener estructura de carpetas:", error);
-        res.status(500).json({ error: "Error al obtener la estructura de carpetas" });
-    }
-});
-
-/**
  * Crear subcarpeta
  * http://localhost/orgchart/mydocuments/:folderName/subfolder POST
  */
@@ -978,18 +992,10 @@ router.post("/mydocuments/:folderName/subfolder", (req, res) => {
         const { subfolderName, parentPath = '' } = req.body;
 
         if (!subfolderName) {
-        return res.status(400).json({ error: "Nombre de subcarpeta requerido" });
+            return res.status(400).json({ error: "Nombre de subcarpeta requerido" });
         }
 
-        // Mapear los nombres de carpetas a las rutas reales
-        const folderMap = {
-            'contratacion': 'mydocuments/contratacion',
-            'leyes': 'mydocuments/leyes, procedimientos y procedimientos',
-            'reportes': 'mydocuments/reportes y memorandums',
-            'router': 'mydocuments/router'
-        };
-
-        const actualFolderPath = folderMap[folderName];
+        const actualFolderPath = getFolderPath(folderName);
         if (!actualFolderPath) {
             return res.status(404).json({ error: "Carpeta no encontrada" });
         }
@@ -1029,15 +1035,7 @@ router.delete("/mydocuments/:folderName/subfolder", (req, res) => {
             return res.status(400).json({ error: "Ruta de subcarpeta requerida" });
         }
 
-        // Mapear los nombres de carpetas a las rutas reales
-        const folderMap = {
-            'contratacion': 'mydocuments/contratacion',
-            'leyes': 'mydocuments/leyes, procedimientos y procedimientos',
-            'reportes': 'mydocuments/reportes y memorandums',
-            'router': 'mydocuments/router'
-        };
-
-        const actualFolderPath = folderMap[folderName];
+        const actualFolderPath = getFolderPath(folderName);
         if (!actualFolderPath) {
             return res.status(404).json({ error: "Carpeta no encontrada" });
         }
@@ -1074,15 +1072,7 @@ router.get("/mydocuments/:folderName/files", (req, res) => {
         const folderName = req.params.folderName;
         const subfolder = req.query.subfolder as string || '';
 
-        // Mapear los nombres de carpetas a las rutas reales
-        const folderMap = {
-            'contratacion': 'mydocuments/contratacion',
-            'leyes': 'mydocuments/leyes, procedimientos y procedimientos',
-            'reportes': 'mydocuments/reportes y memorandums',
-            'router': 'mydocuments/router'
-        };
-
-        const actualFolderPath = folderMap[folderName];
+        const actualFolderPath = getFolderPath(folderName);
         if (!actualFolderPath) {
             return res.status(404).json({ error: "Carpeta no encontrada" });
         }
@@ -1128,6 +1118,121 @@ router.get("/mydocuments/:folderName/files", (req, res) => {
     } catch (error) {
         console.error("Error al obtener archivos de subcarpeta:", error);
         res.status(500).json({ error: "Error al obtener los archivos" });
+    }
+});
+
+/**
+ * Endpoint para inicializar carpetas de MyDocuments
+ * http://localhost/orgchart/mydocuments-init GET
+ */
+/**
+ * Obtener estructura completa de carpetas y archivos para MyDocuments
+ * http://localhost/orgchart/mydocuments-structure/:folderName GET
+ */
+router.get("/mydocuments-structure/:folderName", (req, res) => {
+    try {
+        const folderName = req.params.folderName;
+        console.log(`📁 Solicitando estructura para carpeta: ${folderName}`);
+        
+        const actualFolderPath = getFolderPath(folderName);
+        console.log(`📁 Ruta mapeada: ${actualFolderPath}`);
+        
+        if (!actualFolderPath) {
+            console.log(`❌ Carpeta no encontrada en el mapeo: ${folderName}`);
+            return res.status(404).json({ error: "Carpeta no encontrada" });
+        }
+        
+        const folderPath = path.join(ruta, actualFolderPath);
+        console.log(`📁 Ruta completa: ${folderPath}`);
+        
+        // Verificar si la ruta base existe
+        const baseExists = fs.existsSync(ruta);
+        console.log(`📁 Ruta base existe: ${baseExists}`);
+        
+        // Verificar si la carpeta específica existe
+        const folderExists = fs.existsSync(folderPath);
+        console.log(`📁 Carpeta específica existe: ${folderExists}`);
+        
+        // Crear la carpeta si no existe
+        if (!folderExists) {
+            console.log(`📁 Creando carpeta: ${folderPath}`);
+            try {
+                fs.mkdirSync(folderPath, { recursive: true });
+                console.log(`✅ Carpeta creada exitosamente`);
+            } catch (mkdirError) {
+                console.error(`❌ Error creando carpeta:`, mkdirError);
+                return res.status(500).json({
+                    error: "Error creando la carpeta",
+                    details: mkdirError.message
+                });
+            }
+        }
+        
+        // Verificar permisos de lectura
+        try {
+            fs.accessSync(folderPath, fs.constants.R_OK);
+            console.log(`✅ Permisos de lectura OK`);
+        } catch (accessError) {
+            console.error(`❌ Sin permisos de lectura:`, accessError);
+            return res.status(403).json({
+                error: "Sin permisos para acceder a la carpeta",
+                path: folderPath
+            });
+        }
+        
+        const basePath = path.join(ruta, 'mydocuments');
+        console.log(`📁 Ruta base para estructura: ${basePath}`);
+        
+        const structure = getFolderStructure(folderPath, basePath, folderName);
+        console.log(`✅ Estructura obtenida exitosamente, ${structure.items.length} items`);
+        
+        res.json(structure);
+    } catch (error) {
+        console.error("❌ Error al obtener estructura de carpetas:", error);
+        res.status(500).json({
+            error: "Error al obtener la estructura de carpetas",
+            details: error.message
+        });
+    }
+});
+
+/**
+ * Endpoint para inicializar carpetas de MyDocuments
+ * http://localhost/orgchart/mydocuments-init GET
+ */
+router.get("/mydocuments-init", (req, res) => {
+    try {
+        const folderMap = getFolderMap();
+        const results: any[] = [];
+
+        Object.entries(folderMap).forEach(([folderId, folderPath]) => {
+            const fullPath = path.join(ruta, folderPath);
+        
+            if (!fs.existsSync(fullPath)) {
+                fs.mkdirSync(fullPath, { recursive: true });
+                    results.push({
+                    folder: folderId,
+                    path: folderPath,
+                    status: 'created'
+                });
+                console.log(`Carpeta creada: ${fullPath}`);
+            } else {
+                results.push({
+                    folder: folderId,
+                    path: folderPath,
+                    status: 'exists'
+                });
+            }
+        });
+
+        res.json({ 
+            message: "Estructura de MyDocuments inicializada",
+            results 
+        });
+        
+    } catch (error) {
+        console.error("Error inicializando MyDocuments:", error);
+        res.status(500).json({ error: "Error inicializando la estructura de MyDocuments" });
     }
 });
 
