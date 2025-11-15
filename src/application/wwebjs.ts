@@ -1,4 +1,4 @@
-import Ws from "../infrastructure/repositories/ws";
+import Ws from "../infrastructure/repositories/wwebjs";
 
 export class StatusCreate {
     constructor(private readonly leadExternal: Ws) {}

@@ -18,6 +18,69 @@ class Ws implements LeadExternal {
     console.log("✅ WhatsApp Client creado - Esperando activación manual");
   }
 
+  // Método para desconectar WhatsApp
+  async disconnectWhatsApp(): Promise<any> {
+    try {
+      if (this.cliente) {
+        await this.cliente.destroy();
+        this.cliente = null;
+        this.status = false;
+        this.isInitialized = false;
+        
+        this.notifyStatusUpdate('disconnected', 'WhatsApp desconectado manualmente');
+        console.log("🔴 WhatsApp desconectado manualmente");
+        
+        return Promise.resolve({
+          err: false,
+          status: "200",
+          statusText: "WhatsApp desconectado correctamente"
+        });
+      } else {
+        return Promise.resolve({
+          err: false,
+          status: "200", 
+          statusText: "WhatsApp ya estaba desconectado"
+        });
+      }
+    } catch (error: any) {
+      console.error("❌ Error desconectando WhatsApp:", error);
+      return Promise.resolve({
+        err: true,
+        status: "500",
+        statusText: `Error desconectando WhatsApp: ${error.message}`
+      });
+    }
+  }
+
+  // Método para forzar nueva autenticación
+  async forceReconnect(): Promise<any> {
+    try {
+      // Primero desconectar
+      await this.disconnectWhatsApp();
+      
+      // Limpiar datos de autenticación local
+      const authPath = `${process.cwd()}/.wwebjs_auth`;
+      if (require("fs").existsSync(authPath)) {
+        require("fs").rmSync(authPath, { recursive: true, force: true });
+        console.log("🧹 Datos de autenticación eliminados");
+      }
+      
+      // Esperar un momento antes de reiniciar
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Reiniciar WhatsApp
+      return await this.initializeWhatsApp();
+      
+    } catch (error: any) {
+      console.error("❌ Error en reconexión forzada:", error);
+      return Promise.resolve({
+        err: true,
+        status: "500",
+        statusText: `Error en reconexión: ${error.message}`
+      });
+    }
+  }
+  
   // Método para configurar WebSocket server
   setSocketIO(io: Server) {
     this.io = io;

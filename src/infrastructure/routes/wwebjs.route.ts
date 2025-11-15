@@ -33,16 +33,50 @@ const fileUpload = multer({
  * POST http://localhost/start
  */
 router.post("/start", logMiddleware, async (req, res) => {
-  try {
-    const result = await whatsappInstance.initializeWhatsApp();
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({
-      err: true,
-      status: "500",
-      statusText: `Error iniciando WhatsApp: ${error.message}`
-    });
-  }
+    try {
+        const result = await whatsappInstance.initializeWhatsApp();
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({
+            err: true,
+            status: "500",
+            statusText: `Error iniciando WhatsApp: ${error.message}`
+        });
+    }
+});
+
+/**
+ * Desconectar WhatsApp manualmente
+ * POST http://localhost/disconnect
+ */
+router.post("/disconnect", logMiddleware, async (req, res) => {
+    try {
+        const result = await whatsappInstance.disconnectWhatsApp();
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({
+            err: true,
+            status: "500",
+            statusText: `Error desconectando WhatsApp: ${error.message}`
+        });
+    }
+});
+
+/**
+ * Forzar reconexión y nueva autenticación
+ * POST http://localhost/reconnect
+ */
+router.post("/reconnect", logMiddleware, async (req, res) => {
+    try {
+        const result = await whatsappInstance.forceReconnect();
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({
+            err: true,
+            status: "500",
+            statusText: `Error reconectando WhatsApp: ${error.message}`
+        });
+    }
 });
 
 /**
