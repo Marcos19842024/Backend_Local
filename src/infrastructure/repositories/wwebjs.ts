@@ -13,75 +13,99 @@ class Ws implements LeadExternal {
   private cliente: Client | null = null;
   private isInitialized = false;
   private io: Server | null = null;
-  private initializationInProgress = false; // 🔥 Nueva bandera para controlar inicialización
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 3;
 
   constructor() {
     console.log("✅ WhatsApp Client creado - Esperando activación manual");
   }
 
-  // 🔥 Método mejorado para prevenir múltiples inicializaciones
+  // Método para configurar WebSocket server
+  setSocketIO(io: Server) {
+    this.io = io;
+    console.log("✅ WebSocket configurado para notificaciones QR");
+  }
+
+  // Método para notificar actualizaciones del QR
+  private notifyQrUpdate() {
+    if (this.io) {
+      this.io.emit('whatsapp-qr-updated', {
+        type: 'QR_UPDATED',
+        timestamp: new Date().toISOString(),
+        message: 'Nuevo código QR generado'
+      });
+      console.log('📢 Notificación QR enviada vía WebSocket');
+    }
+  }
+
+  // Método para notificar cambios de estado
+  private notifyStatusUpdate(status: string, message: string) {
+    if (this.io) {
+      this.io.emit('whatsapp-status', {
+        status: status,
+        message: message,
+        timestamp: new Date().toISOString()
+      });
+      console.log(`📢 Estado WhatsApp: ${status} - ${message}`);
+    }
+  }
+
+  /**
+   * Iniciar WhatsApp manualmente
+   */
   async initializeWhatsApp(): Promise<any> {
-    // Si ya está inicializado, retornar éxito
-    if (this.isInitialized && this.cliente && this.status) {
-      console.log("✅ WhatsApp ya está inicializado y conectado");
+    if (this.isInitialized && this.cliente) {
+      this.notifyStatusUpdate('connected', 'WhatsApp ya está inicializado');
       return Promise.resolve({
         err: false,
         status: "200",
-        statusText: "WhatsApp ya está inicializado y conectado"
+        statusText: "WhatsApp ya está inicializado"
       });
     }
-
-    // Si hay una inicialización en progreso, evitar duplicados
-    if (this.initializationInProgress) {
-      console.log("🔄 Inicialización ya en progreso, ignorando solicitud duplicada");
-      return Promise.resolve({
-        err: false,
-        status: "200", 
-        statusText: "Inicialización en progreso"
-      });
-    }
-
-    this.initializationInProgress = true;
 
     try {
-      // Si ya existe un cliente pero no está conectado, limpiarlo
-      if (this.cliente && !this.status) {
-        console.log("🧹 Limpiando cliente anterior no conectado");
-        try {
-          await this.cliente.destroy();
-        } catch (error) {
-          console.log("⚠️ Error limpiando cliente anterior:", error);
+      this.cliente = new Client({
+        authStrategy: new LocalAuth({
+          clientId: this.user
+        }),
+        puppeteer: {
+          //executablePath: "/usr/bin/chromium-browser",
+          //headless: true,
+          args: [
+            "--disable-setuid-sandbox",
+            "--unhandled-rejections=strict",
+            "--no-sandbox",
+          ],
         }
+      });
+
+      this.cliente.on("ready", () => {
+        this.status = true;
+        this.isInitialized = true;
+        console.log("✅ LOGIN SUCCESS", this.user, this.userid);
+        this.notifyStatusUpdate('connected', 'WhatsApp conectado correctamente');
+      });
+
+      this.cliente.on("auth_failure", () => {
+        this.status = false;
+        this.isInitialized = false;
+        console.log("❌ LOGIN FAIL");
+        this.notifyStatusUpdate('auth_failure', 'Error de autenticación de WhatsApp');
+      });
+
+      this.cliente.on("qr", (qr) => {
+        console.log("🔄 Nuevo QR generado");
+        this.generateImage(qr);
+        // Notificar a todos los clientes conectados
+        this.notifyQrUpdate();
+        this.notifyStatusUpdate('qr_generated', 'Nuevo código QR generado');
+      });
+
+      this.cliente.on("disconnected", (reason) => {
+        this.status = false;
+        this.isInitialized = false;
         this.cliente = null;
-      }
-
-      // Crear nueva instancia solo si no existe
-      if (!this.cliente) {
-        this.cliente = new Client({
-          authStrategy: new LocalAuth({
-            clientId: this.user,
-            dataPath: `${process.cwd()}/.wwebjs_auth_${this.user}` // 🔥 Path único por usuario
-          }),
-          puppeteer: {
-            headless: true,
-            args: [
-              "--disable-setuid-sandbox",
-              "--unhandled-rejections=strict",
-              "--no-sandbox",
-              "--disable-extensions",
-              "--disable-gpu",
-              "--disable-dev-shm-usage",
-              "--disable-setuid-sandbox"
-            ],
-          },
-          takeoverOnConflict: false, // 🔥 Evitar toma de control conflictiva
-          restartOnAuthFail: false, // 🔥 No reiniciar automáticamente
-        });
-
-        this.setupEventListeners();
-      }
+        console.log("🔴 WhatsApp desconectado:", reason);
+        this.notifyStatusUpdate('disconnected', `WhatsApp desconectado: ${reason}`);
+      });
 
       await this.cliente.initialize();
       
@@ -94,7 +118,6 @@ class Ws implements LeadExternal {
 
     } catch (error: any) {
       console.error("❌ Error inicializando WhatsApp:", error);
-      this.initializationInProgress = false;
       this.notifyStatusUpdate('error', `Error inicializando: ${error.message}`);
       return Promise.resolve({
         err: true,
@@ -104,163 +127,11 @@ class Ws implements LeadExternal {
     }
   }
 
-  // 🔥 Configurar event listeners una sola vez
-  private setupEventListeners() {
-    if (!this.cliente) return;
-
-    this.cliente.on("ready", () => {
-      this.status = true;
-      this.isInitialized = true;
-      this.initializationInProgress = false;
-      this.reconnectAttempts = 0; // Resetear contador de reconexiones
-      console.log("✅ LOGIN SUCCESS", this.user, this.userid);
-      this.notifyStatusUpdate('connected', 'WhatsApp conectado correctamente');
-    });
-
-    this.cliente.on("auth_failure", (message) => {
-      this.status = false;
-      this.isInitialized = false;
-      this.initializationInProgress = false;
-      console.log("❌ LOGIN FAIL:", message);
-      this.notifyStatusUpdate('auth_failure', `Error de autenticación: ${message}`);
-    });
-
-    this.cliente.on("qr", (qr) => {
-      console.log("🔄 Nuevo QR generado - Sesión anterior cerrada");
-      this.generateImage(qr);
-      this.notifyQrUpdate();
-      this.notifyStatusUpdate('qr_generated', 'Nuevo código QR generado - Escanee para conectar');
-    });
-
-    this.cliente.on("disconnected", (reason) => {
-      this.status = false;
-      this.isInitialized = false;
-      this.initializationInProgress = false;
-      this.cliente = null;
-      console.log("🔴 WhatsApp desconectado:", reason);
-      
-      // 🔥 Intentar reconexión automática solo si no fue desconexión manual
-      if (reason !== 'LOGOUT' && this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++;
-        console.log(`🔄 Intentando reconexión automática (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        setTimeout(() => {
-          if (!this.status) {
-            this.initializeWhatsApp().catch(console.error);
-          }
-        }, 5000);
-      }
-      
-      this.notifyStatusUpdate('disconnected', `WhatsApp desconectado: ${reason}`);
-    });
-
-    this.cliente.on("authenticated", () => {
-      console.log("🔑 WhatsApp autenticado correctamente");
-      this.notifyStatusUpdate('authenticated', 'WhatsApp autenticado - Conectando...');
-    });
-
-    this.cliente.on("loading_screen", (percent, message) => {
-      console.log(`📱 Cargando WhatsApp: ${percent}% - ${message}`);
-      this.notifyStatusUpdate('loading', `Cargando: ${percent}% - ${message}`);
-    });
-  }
-
-  // 🔥 Método mejorado para desconectar
-  async disconnectWhatsApp(): Promise<any> {
-    try {
-      this.reconnectAttempts = this.maxReconnectAttempts; // Evitar reconexión automática
-      
-      if (this.cliente) {
-        // Destruir el cliente completamente
-        await this.cliente.destroy();
-        this.cliente = null;
-        this.status = false;
-        this.isInitialized = false;
-        this.initializationInProgress = false;
-        
-        console.log("🔴 WhatsApp desconectado manualmente");
-        this.notifyStatusUpdate('disconnected', 'WhatsApp desconectado manualmente');
-        
-        return Promise.resolve({
-          err: false,
-          status: "200",
-          statusText: "WhatsApp desconectado correctamente"
-        });
-      } else {
-        return Promise.resolve({
-          err: false,
-          status: "200", 
-          statusText: "WhatsApp ya estaba desconectado"
-        });
-      }
-    } catch (error: any) {
-      console.error("❌ Error desconectando WhatsApp:", error);
-      return Promise.resolve({
-        err: true,
-        status: "500",
-        statusText: `Error desconectando WhatsApp: ${error.message}`
-      });
-    }
-  }
-
-  // 🔥 Método mejorado para forzar nueva autenticación
-  async forceReconnect(): Promise<any> {
-    try {
-      console.log("🔄 Forzando nueva autenticación...");
-      
-      // Primero desconectar completamente
-      await this.disconnectWhatsApp();
-      
-      // Limpiar datos de autenticación específicos del usuario
-      const authPath = `${process.cwd()}/.wwebjs_auth_${this.user}`;
-      if (require("fs").existsSync(authPath)) {
-        require("fs").rmSync(authPath, { recursive: true, force: true });
-        console.log("🧹 Datos de autenticación eliminados:", authPath);
-      }
-      
-      // Esperar un momento antes de reiniciar
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Reiniciar WhatsApp con nueva sesión
-      console.log("🔄 Iniciando nueva sesión de WhatsApp...");
-      return await this.initializeWhatsApp();
-      
-    } catch (error: any) {
-      console.error("❌ Error en reconexión forzada:", error);
-      return Promise.resolve({
-        err: true,
-        status: "500",
-        statusText: `Error en reconexión: ${error.message}`
-      });
-    }
-  }
-
-  setSocketIO(io: Server) {
-    this.io = io;
-    console.log("✅ WebSocket configurado para notificaciones QR");
-  }
-
-  private notifyQrUpdate() {
-    if (this.io) {
-      this.io.emit('whatsapp-qr-updated', {
-        type: 'QR_UPDATED',
-        timestamp: new Date().toISOString(),
-        message: 'Nuevo código QR generado'
-      });
-      console.log('📢 Notificación QR enviada vía WebSocket');
-    }
-  }
-
-  private notifyStatusUpdate(status: string, message: string) {
-    if (this.io) {
-      this.io.emit('whatsapp-status', {
-        status: status,
-        message: message,
-        timestamp: new Date().toISOString()
-      });
-      console.log(`📢 Estado WhatsApp: ${status} - ${message}`);
-    }
-  }
-
+  /**
+   * Enviar mensaje de WS
+   * @param lead
+   * @returns
+   */
   async getContactList(): Promise<any> {
     if(!this.status || !this.cliente) {
       return Promise.resolve({
@@ -403,6 +274,7 @@ class Ws implements LeadExternal {
     let qr_png = imageQr(base64, { type: "png", margin: 4 });
     qr_png.pipe(require("fs").createWriteStream(`${path}/qr.png`));
     console.log(`⚡ Nuevo QR generado en: ${path}/qr.png`);
+    console.log(`⚡ Notificando a clientes conectados...`);
   };
 }
 
