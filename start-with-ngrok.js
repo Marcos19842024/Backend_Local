@@ -49,155 +49,11 @@ async function startMongoDBLocal() {
   });
 }
 
-// Función para iniciar el servicio MongoDB
-async function startMongoService() {
-  return new Promise((resolve, reject) => {
-    const startProcess = spawn('brew', ['services', 'start', 'mongodb/brew/mongodb-community'], { 
-      stdio: 'inherit' 
-    });
-
-    startProcess.on('close', (code) => {
-      if (code === 0) {
-        console.log('✅ MongoDB iniciado correctamente');
-        console.log('⏳ Esperando que MongoDB esté listo...');
-        // Esperar 5 segundos para que MongoDB esté completamente inicializado
-        setTimeout(resolve, 5000);
-      } else {
-        // Intentar método alternativo
-        console.log('🔄 Intentando método alternativo...');
-        startMongoManual().then(resolve).catch(reject);
-      }
-    });
-
-    startProcess.on('error', (error) => {
-      console.log('❌ Error al iniciar con brew services:', error.message);
-      startMongoManual().then(resolve).catch(reject);
-    });
-  });
-}
-
-// Método alternativo para iniciar MongoDB
-async function startMongoManual() {
-  return new Promise((resolve, reject) => {
-    console.log('🔄 Iniciando MongoDB manualmente...');
-    
-    const manualProcess = spawn('mongod', ['--config', '/usr/local/etc/mongod.conf'], { 
-      stdio: 'inherit',
-      detached: true // Ejecutar en proceso separado
-    });
-
-    manualProcess.on('close', (code) => {
-      if (code === 0) {
-        console.log('✅ MongoDB iniciado manualmente');
-        setTimeout(resolve, 5000);
-      } else {
-        console.log('⚠️  Verificando si MongoDB ya está ejecutándose en segundo plano...');
-        // Verificar conexión directa
-        testMongoConnection().then(resolve).catch(reject);
-      }
-    });
-
-    manualProcess.on('error', (error) => {
-      console.log('❌ Error al iniciar MongoDB manualmente:', error.message);
-      testMongoConnection().then(resolve).catch(reject);
-    });
-  });
-}
-
-// Función para probar conexión directa a MongoDB
-async function testMongoConnection() {
-  return new Promise((resolve, reject) => {
-    console.log('🔍 Probando conexión directa a MongoDB...');
-    
-    const net = require('net');
-    const client = new net.Socket();
-    
-    client.setTimeout(5000);
-    
-    client.connect(27017, 'localhost', () => {
-      console.log('✅ Conexión exitosa a MongoDB en localhost:27017');
-      client.destroy();
-      resolve();
-    });
-    
-    client.on('timeout', () => {
-      console.log('❌ Timeout conectando a MongoDB');
-      client.destroy();
-      reject(new Error('No se pudo conectar a MongoDB'));
-    });
-    
-    client.on('error', (error) => {
-      console.log('❌ Error de conexión a MongoDB:', error.message);
-      client.destroy();
-      
-      // Preguntar si continuar sin base de datos
-      console.log('\n💡 ¿Quieres continuar sin base de datos? (s/n)');
-      process.stdin.once('data', (data) => {
-        const answer = data.toString().trim().toLowerCase();
-        if (answer === 's' || answer === 'y' || answer === 'si' || answer === 'yes') {
-          console.log('🔄 Continuando sin base de datos...');
-          resolve();
-        } else {
-          reject(new Error('Conexión a MongoDB falló'));
-        }
-      });
-    });
-  });
-}
-
-// Función para iniciar base de datos
-async function startDatabase() {
-  try {
-    await startMongoDBLocal();
-    console.log('✅ Base de datos MongoDB lista');
-  } catch (error) {
-    console.log('⚠️  No se pudo iniciar MongoDB:', error.message);
-    console.log('🔄 Intentando continuar sin verificación de base de datos...');
-    // Continuar sin base de datos
-  }
-}
-
-// Función para probar conexión a la base de datos
-async function testDatabaseConnection() {
-  return new Promise((resolve, reject) => {
-    console.log('🔍 Probando conexión a la base de datos...');
-    
-    const testProcess = spawn('npm', ['run', 'db:test'], { 
-      stdio: 'inherit' 
-    });
-
-    testProcess.on('close', (code) => {
-      if (code === 0) {
-        console.log('✅ Conexión a la base de datos exitosa');
-        resolve();
-      } else {
-        console.log('❌ Error en la conexión a la base de datos');
-        
-        // Preguntar si continuar sin base de datos
-        console.log('💡 ¿Quieres continuar sin base de datos? (s/n)');
-        process.stdin.once('data', (data) => {
-          const answer = data.toString().trim().toLowerCase();
-          if (answer === 's' || answer === 'y' || answer === 'si' || answer === 'yes') {
-            console.log('🔄 Continuando sin base de datos...');
-            resolve();
-          } else {
-            reject(new Error('Conexión a la base de datos falló'));
-          }
-        });
-      }
-    });
-
-    testProcess.on('error', (error) => {
-      console.log('❌ Error al probar conexión:', error.message);
-      reject(error);
-    });
-  });
-}
-
 // Función para actualizar el .env del frontend con la URL de ngrok
 function updateFrontendEnv(ngrokUrl) {
   try {
     const frontendEnvPath = path.join(__dirname, 'dist/Ecommerce_Local/.env');
+    const backendEnvPath = path.join(__dirname, '.env');
     
     let backendUrl = ngrokUrl;
     if (ngrokUrl.startsWith('http://') && ngrokUrl.includes('ngrok')) {
@@ -207,22 +63,45 @@ function updateFrontendEnv(ngrokUrl) {
     
     backendUrl = `${backendUrl}/`;
     
+    // Leer variables del .env del backend
+    let user = '';
+    let userid = '';
+    
+    if (fs.existsSync(backendEnvPath)) {
+      const backendEnvContent = fs.readFileSync(backendEnvPath, 'utf8');
+      
+      // Buscar USUARIO
+      const userMatch = backendEnvContent.match(/USUARIO=(.*)/);
+      if (userMatch) user = userMatch[1].trim();
+      
+      // Buscar USUARIOID
+      const useridMatch = backendEnvContent.match(/USUARIOID=(.*)/);
+      if (useridMatch) userid = useridMatch[1].trim();
+    }
+    
+    console.log('🔍 Valores encontrados:');
+    console.log('   USUARIO:', user || 'No encontrado');
+    console.log('   USUARIOID:', userid || 'No encontrado');
+    
     let envContent = '';
     if (fs.existsSync(frontendEnvPath)) {
       envContent = fs.readFileSync(frontendEnvPath, 'utf8');
     }
 
-    if (envContent.includes('VITE_URL_SERVER=')) {
-      envContent = envContent.replace(
-        /VITE_URL_SERVER=.*/,
-        `VITE_URL_SERVER=${backendUrl}`
-      );
+    // Actualizar o agregar las variables
+    if (envContent.includes('VITE_URL_SERVER=') && envContent.includes('VITE_USUARIO=') && envContent.includes('VITE_USUARIOID=')) {
+      envContent = envContent.replace(/VITE_URL_SERVER=.*/, `VITE_URL_SERVER=${backendUrl}`);
+      envContent = envContent.replace(/VITE_USUARIO=.*/, `VITE_USUARIO=${user}`);
+      envContent = envContent.replace(/VITE_USUARIOID=.*/, `VITE_USUARIOID=${userid}`);
     } else {
-      envContent += `\nVITE_URL_SERVER=${backendUrl}\n`;
+      envContent += `\nVITE_URL_SERVER=${backendUrl}\nVITE_USUARIO=${user}\nVITE_USUARIOID=${userid}\n`;
     }
     
     fs.writeFileSync(frontendEnvPath, envContent, 'utf8');
-    console.log('✅ Frontend .env actualizado con URL Ngrok:', backendUrl);
+    console.log('✅ Frontend .env actualizado:');
+    console.log('   🌐 URL:', backendUrl);
+    console.log('   👤 USUARIO:', user);
+    console.log('   🆔 USUARIOID:', userid);
     
   } catch (error) {
     console.log('⚠️  No se pudo actualizar el .env del frontend:', error.message);
@@ -279,7 +158,6 @@ async function startSystem() {
             if (urlMatch) {
               ngrokUrlFound = true;
               const publicUrl = urlMatch[1];
-              
               updateFrontendEnv(publicUrl);
               
               console.log('🔄 Espera 5 segundos para que el backend procese los cambios...');
