@@ -2,53 +2,6 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Función para verificar e iniciar MongoDB local con Brew
-async function startMongoDBLocal() {
-  return new Promise((resolve, reject) => {
-    console.log('🔍 Verificando estado de MongoDB local...');
-    
-    // Primero verificar si MongoDB ya está corriendo
-    const checkProcess = spawn('brew', ['services', 'list'], { 
-      stdio: 'pipe' 
-    });
-
-    let mongoRunning = false;
-    let mongoInstalled = false;
-
-    checkProcess.stdout.on('data', (data) => {
-      const output = data.toString();
-      if (output.includes('mongodb/brew/mongodb-community') || output.includes('mongodb-community')) {
-        mongoInstalled = true;
-        if (output.includes('started') || output.includes('running')) {
-          mongoRunning = true;
-        }
-      }
-    });
-
-    checkProcess.on('close', () => {
-      if (!mongoInstalled) {
-        console.log('❌ MongoDB no está instalado con Brew');
-        console.log('💡 Ejecuta: brew install mongodb/brew/mongodb-community');
-        reject(new Error('MongoDB no instalado'));
-        return;
-      }
-
-      if (mongoRunning) {
-        console.log('✅ MongoDB ya está ejecutándose');
-        resolve();
-      } else {
-        console.log('🚀 Iniciando MongoDB con Brew services...');
-        startMongoService().then(resolve).catch(reject);
-      }
-    });
-
-    checkProcess.on('error', (error) => {
-      console.log('❌ Error al verificar servicios Brew:', error.message);
-      reject(error);
-    });
-  });
-}
-
 // Función para actualizar el .env del frontend con la URL de ngrok
 function updateFrontendEnv(ngrokUrl) {
   try {
@@ -187,10 +140,6 @@ async function startSystem() {
 
   } catch (error) {
     console.log('❌ Error crítico al iniciar el sistema:', error.message);
-    console.log('\n💡 SOLUCIONES:');
-    console.log('   1. Iniciar MongoDB manualmente: brew services start mongodb/brew/mongodb-community');
-    console.log('   2. Verificar estado: brew services list');
-    console.log('   3. O ejecutar sin base de datos (funcionalidad limitada)');
     process.exit(1);
   }
 }
