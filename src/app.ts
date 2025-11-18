@@ -5,24 +5,11 @@ import router from "./infrastructure/routes"
 import os from "os"
 import http from "http"
 import { Server as SocketIOServer } from "socket.io"
-import mongoose from "mongoose"
 
 const port = parseInt(process.env.PORT || '3001')
 const path = `${process.cwd()}/`
 const app = express()
 var history = require('connect-history-api-fallback')
-
-// Conectar a MongoDB al iniciar
-async function connectDB() {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce_local');
-    console.log('✅ MongoDB conectado');
-  } catch (error) {
-    console.error('❌ Error conectando a MongoDB:', error);
-  }
-}
-
-connectDB();
 
 // Crear servidor HTTP para WebSockets
 const server = http.createServer(app)
@@ -183,11 +170,6 @@ app.get('/api/config', (req, res) => {
   const clientHost = req.headers.host;
   const clientIP = req.ip || req.connection.remoteAddress;
   
-  // console.log('🔧 Config solicitada desde:');
-  // console.log('   - Origin:', clientOrigin || 'undefined');
-  // console.log('   - Host:', clientHost);
-  // console.log('   - IP:', clientIP);
-  
   // Determinar la URL base para el cliente
   let apiUrl = `http://${getLocalIP()}:${port}`;
   
@@ -218,22 +200,6 @@ app.get('/api/config', (req, res) => {
   res.json(config);
 });
 
-// // ENDPOINT PARA APAGAR SERVIDOR DESDE FRONTEND
-// app.post('/api/server/shutdown', (req, res) => {
-//   console.log('🔄 Apagando servidor por solicitud del frontend...');
-  
-//   res.json({ 
-//     success: true, 
-//     message: 'Servidor apagándose...' 
-//   });
-  
-//   // Apagar el servidor después de 2 segundos
-//   setTimeout(() => {
-//     console.log('👋 Servidor apagado por solicitud del frontend');
-//     process.exit(0);
-//   }, 2000);
-// });
-
 // Static files - DESPUÉS de las rutas API
 app.use(history())
 app.use(express.static(path + 'dist/Ecommerce_Local/dist/'))
@@ -246,22 +212,7 @@ const localURL = `http://${localIP}:${port}`
 const publicURL = `https://checklist.mitunnel.cloudflare.com`
 
 // Usar server HTTP en lugar de app.listen
-server.listen(port, HOST, () => {
-  // console.log('🚀 Servidor ejecutándose:')
-  // console.log(`📍 Local: http://localhost:${port}`)
-  // console.log(`🌐 Red: ${localURL}`)
-  // console.log(`🌍 Público: ${publicURL}`)
-  // console.log('✅ WebSocket activo para notificaciones en tiempo real')
-  // console.log('✅ CORS configurado para:')
-  // console.log('   - Ngrok (*.ngrok-free.app, *.ngrok.io, *.ngrok.app)')
-  // console.log('   - Localhost (3000, 3001, 5173)')
-  // console.log('   - Requests sin origin (ngrok/apps móviles)')
-  // console.log('   - IPs locales (192.168.x.x, 10.x.x.x, 172.16-31.x.x)')
-  // console.log('====================================')
-})
+server.listen(port, HOST, () => {})
 
 // Exportar io para usar en otras partes
 export { io };
-
-// Abrir automáticamente con la IP correcta
-//open(localURL)

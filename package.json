@@ -6,11 +6,7 @@
   "scripts": {
     "dev": "nodemon src/app.ts",
     "start": "node start-with-ngrok.js",
-    "build": "tsc -p .",
-    "db:test": "ts-node src/scripts/testConnection.ts",
-    "db:seed": "ts-node src/scripts/seedDebtors.ts",
-    "db:start": "docker start mongodb",
-    "db:stop": "docker stop mongodb"
+    "build": "tsc -p ."
   },
   "homepage": "./",
   "keywords": [],
@@ -23,7 +19,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
-    "mongoose": "^8.19.3",
     "multer": "^1.4.5-lts.1",
     "node-dependency-injection": "^3.0.3",
     "nodemailer": "^7.0.4",

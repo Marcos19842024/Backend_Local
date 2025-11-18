@@ -236,12 +236,6 @@ async function startSystem() {
   const port = 3001;
 
   try {
-    // 1. Iniciar base de datos MongoDB local
-    await startDatabase();
-    
-    // 2. Probar conexión a la base de datos
-    await testDatabaseConnection();
-
     console.log('📦 Compilando TypeScript...');
     
     const buildProcess = spawn('npm', ['run', 'build'], { stdio: 'inherit' });
