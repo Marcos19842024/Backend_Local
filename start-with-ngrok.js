@@ -36,6 +36,7 @@ function updateFrontendEnv(ngrokUrl) {
     console.log('   USUARIO:', user || 'No encontrado');
     console.log('   USUARIOID:', userid || 'No encontrado');
     
+    // Leer el archivo .env actual
     let envContent = '';
     if (fs.existsSync(frontendEnvPath)) {
       envContent = fs.readFileSync(frontendEnvPath, 'utf8');

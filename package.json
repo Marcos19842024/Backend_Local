@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/app.ts",
-    "start": "node start-with-ngrok.js",
+    "start": "node start-with-ip.js",
     "build": "tsc -p ."
   },
   "homepage": "./",
