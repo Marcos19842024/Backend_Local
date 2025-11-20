@@ -1,7 +1,11 @@
 dist
 node_modules
 tmp/*
+orgchart/*
+checklist/*
+logs/*
+.DS_Store
 !tmp/.gitkeep
 .wwebjs_auth
-tokens
 .wwebjs_cache
+tokens
