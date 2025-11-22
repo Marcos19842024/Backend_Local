@@ -5,11 +5,21 @@ import router from "./infrastructure/routes"
 import os from "os"
 import http from "http"
 import { Server as SocketIOServer } from "socket.io"
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
 
+dotenv.config();
 const port = parseInt(process.env.PORT || '3001')
 const path = `${process.cwd()}/`
 const app = express()
 var history = require('connect-history-api-fallback')
+
+// Conectar a MongoDB
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/debtors_db';
+
+mongoose.connect(MONGODB_URI)
+.then(() => console.log('Conectado a MongoDB'))
+.catch((error) => console.error('Error conectando a MongoDB:', error));
 
 // Crear servidor HTTP para WebSockets
 const server = http.createServer(app)
