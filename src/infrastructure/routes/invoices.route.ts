@@ -87,24 +87,31 @@ router.delete("/:fecha/:proveedor/:factura", (req, res) => {
   const xmlPath = path.join(baseDir, `${factura}.xml`);
 
   try {
+    // Eliminar archivos PDF y XML
     if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
     if (fs.existsSync(xmlPath)) fs.unlinkSync(xmlPath);
 
-    // 🗑️ eliminar carpeta si queda vacía
-    if (fs.existsSync(baseDir) && fs.readdirSync(baseDir).length === 0) {
-      fs.rmdirSync(baseDir, { recursive: true });
-    }
+    // Función helper para eliminar directorios vacíos de forma segura
+    const removeDirIfEmpty = (dirPath: string) => {
+      if (fs.existsSync(dirPath) && fs.readdirSync(dirPath).length === 0) {
+        fs.rmdirSync(dirPath);
+        return true;
+      }
+      return false;
+    };
 
-    // 🗑️ eliminar carpeta de la fecha si también queda vacía
-    const fechaDir = path.join(ruta, fecha);
-    if (fs.existsSync(fechaDir) && fs.readdirSync(fechaDir).length === 0) {
-      fs.rmdirSync(fechaDir, { recursive: true });
+    // Eliminar directorios si están vacíos
+    if (removeDirIfEmpty(baseDir)) {
+      removeDirIfEmpty(path.join(ruta, fecha));
     }
 
     res.json({ message: "Factura eliminada correctamente" });
   } catch (error) {
     console.error("Error al eliminar factura:", error);
-    res.status(500).json({ message: "Error al eliminar la factura" });
+    res.status(500).json({ 
+      message: "Error al eliminar la factura",
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
 });
 
