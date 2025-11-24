@@ -8,24 +8,28 @@ import {
     getMetricas,
     procesarExcelComparativa,
     getHistorialCliente,
-    getTendencias
+    getTendencias,
+    getRegistrosExcel,
+    searchClientes
 } from '../controller/debtorsController';
 
 const router = Router();
 
 // Rutas básicas de clientes
 router.get('/clientes', getClientes);
+router.get('/clientes/buscar', searchClientes);
 router.get('/clientes/:id', getClienteById);
 router.post('/clientes', createCliente);
 router.put('/clientes/:id', updateCliente);
 router.delete('/clientes/:id', deleteCliente);
 
-// Métricas
+// Métricas y dashboard
 router.get('/metricas', getMetricas);
+router.get('/tendencias', getTendencias);
 
 // Comparativas e historial
 router.post('/procesar-comparativa', procesarExcelComparativa);
 router.get('/historial/:clienteId', getHistorialCliente);
-router.get('/tendencias', getTendencias);
+router.get('/registros-excel', getRegistrosExcel);
 
 export { router };
