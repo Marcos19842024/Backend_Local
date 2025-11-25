@@ -155,11 +155,16 @@ const findRenamedEmployees = (oldData: any, newData: any) => {
 
 // Configurar transporte de correo
 const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false, // true para 465, false para otros puertos
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
     },
+    tls: {
+        rejectUnauthorized: false
+    }
 });
 
 // Función auxiliar para limpieza
@@ -604,6 +609,19 @@ router.post("/send-mail-zip/:employeeName", async (req, res) => {
 
         // 🔔 Enviar correo
         try {
+            // Verificar que las variables de entorno estén cargadas
+            if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+                console.error('❌ Variables de entorno faltantes:');
+                console.error('EMAIL_USER:', process.env.EMAIL_USER ? '✓' : '✗');
+                console.error('EMAIL_PASS:', process.env.EMAIL_PASS ? '✓' : '✗');
+                return res.status(500).json({
+                    success: false,
+                    message: "Configuración de correo incompleta"
+                });
+            }
+            
+            console.log('📧 Intentando enviar desde:', process.env.EMAIL_USER);
+            
             const mailOptions = {
                 from: process.env.EMAIL_USER,
                 to: email,
