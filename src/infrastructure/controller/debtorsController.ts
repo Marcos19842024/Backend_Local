@@ -50,14 +50,35 @@ export const updateCliente = async (req: Request, res: Response) => {
 
 export const deleteCliente = async (req: Request, res: Response) => {
     try {
-        const deleted = await Cliente.findByIdAndDelete(req.params.id);
+        const { id } = req.params;
+        
+        console.log('🔍 Intentando eliminar cliente con ID:', id); // Para debug
+        
+        const deleted = await Cliente.findByIdAndDelete(id);
+        
         if (!deleted) {
-            res.status(404).json({ error: 'Cliente no encontrado' });
-            return;
+            console.log('❌ Cliente no encontrado con ID:', id);
+            return res.status(404).json({ 
+                success: false,
+                error: 'Cliente no encontrado' 
+            });
         }
-        res.status(204).send();
+        
+        console.log('✅ Cliente eliminado:', deleted.nombre);
+        
+        // Enviar respuesta JSON en lugar de 204 No Content
+        res.json({ 
+            success: true,
+            message: 'Cliente eliminado correctamente',
+            data: { id: deleted._id, nombre: deleted.nombre }
+        });
+        
     } catch (error) {
-        res.status(500).json({ error: 'Error al eliminar el cliente' });
+        console.error('❌ Error eliminando cliente:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Error interno del servidor al eliminar cliente' 
+        });
     }
 };
 
