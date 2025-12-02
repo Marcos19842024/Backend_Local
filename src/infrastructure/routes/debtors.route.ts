@@ -10,7 +10,9 @@ import {
     getHistorialCliente,
     getTendencias,
     getRegistrosExcel,
-    searchClientes
+    searchClientes,
+    getPeriodosDisponibles,
+    getComparativaPorPeriodo,
 } from '../controller/debtorsController';
 
 const router = Router();
@@ -29,7 +31,9 @@ router.get('/tendencias', getTendencias);
 
 // Comparativas e historial
 router.post('/procesar-comparativa', procesarExcelComparativa);
+router.get('/comparativa-periodo', getComparativaPorPeriodo);
 router.get('/historial/:clienteId', getHistorialCliente);
 router.get('/registros-excel', getRegistrosExcel);
+router.get('/periodos', getPeriodosDisponibles);
 
 export { router };

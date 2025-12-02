@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const RegistroExcelSchema = new mongoose.Schema({
     periodo: { type: String, required: true },
+    tipoPeriodo: { type: String, enum: ['dia', 'semana', 'mes'], default: 'mes' },
     fechaAlbaran: { type: String },
     clienteNombre: { type: String, required: true },
     totalImporte: { type: Number, default: 0 },
