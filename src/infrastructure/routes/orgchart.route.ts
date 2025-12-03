@@ -319,7 +319,6 @@ const createSubfolder = (folderPath: string, subfolderName: string) => {
     return false;
 };
 
-// CORREGIR en orgchart.route.js
 const getFolderMap = () => {
     return {
         'contratacion': 'mydocuments/contratacion',
