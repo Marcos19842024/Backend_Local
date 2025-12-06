@@ -96,7 +96,7 @@ const obtenerPeriodoAnterior = (periodoActual: string, tipoPeriodo: string): str
     }
 };
 
-// NUEVO CONTROLADOR: Obtener comparativa por período
+// Obtener comparativa por período
 export const getComparativaPorPeriodo = async (req: Request, res: Response) => {
     try {
         const periodoRaw = req.query.periodo;
@@ -122,28 +122,26 @@ export const getComparativaPorPeriodo = async (req: Request, res: Response) => {
         }
 
         // Validar tipoPeriodo
-                if (!(typeof tipoPeriodo === 'string' && ['dia', 'semana', 'mes'].includes(tipoPeriodo))) {
-                    return res.status(400).json({
-                        success: false,
-                        error: 'tipoPeriodo debe ser: dia, semana o mes'
-                    });
-                }
+        if (!(typeof tipoPeriodo === 'string' && ['dia', 'semana', 'mes'].includes(tipoPeriodo))) {
+            return res.status(400).json({
+                success: false,
+                error: 'tipoPeriodo debe ser: dia, semana o mes'
+            });
+        }
 
         // Obtener período anterior
         const periodoAnterior = obtenerPeriodoAnterior(periodo, tipoPeriodo);
 
-        // SOLUCIÓN: Separar las promesas para evitar el error de tipos complejos
         const registrosActualPromise = RegistroExcel.find({ 
             periodo: periodo,
             tipoPeriodo: tipoPeriodo 
-        }).exec();
+        }).lean().exec();
 
         const registrosAnteriorPromise = RegistroExcel.find({ 
             periodo: periodoAnterior,
             tipoPeriodo: tipoPeriodo 
-        }).exec();
+        }).lean().exec();
 
-        // Ejecutar promesas separadamente
         const registrosActual = await registrosActualPromise;
         const registrosAnterior = await registrosAnteriorPromise;
 
@@ -241,15 +239,16 @@ export const getComparativaPorPeriodo = async (req: Request, res: Response) => {
     }
 };
 
-// ProcesarExcelComparativa - MEJORADO
+// ProcesarExcelComparativa
 export const procesarExcelComparativa = async (req: Request, res: Response) => {
     try {
-        const { excelData, periodo, tipoPeriodo = 'mes' } = req.body;
+        const { datos, periodo, tipo } = req.body;
+        const excelData = datos;
 
         console.log('📥 Datos recibidos en backend:', {
             tieneExcelData: !!excelData,
             tienePeriodo: !!periodo,
-            tipoPeriodo: tipoPeriodo,
+            tipoPeriodo: tipo || 'mes',
             tipoExcelData: typeof excelData,
             excelDataCount: excelData?.length
         });
@@ -270,7 +269,7 @@ export const procesarExcelComparativa = async (req: Request, res: Response) => {
         }
 
         // Validar tipoPeriodo
-                if (!(typeof tipoPeriodo === 'string' && ['dia', 'semana', 'mes'].includes(tipoPeriodo))) {
+                if (!(typeof tipo === 'string' && ['dia', 'semana', 'mes'].includes(tipo))) {
                     return res.status(400).json({ 
                         success: false,
                         error: 'tipoPeriodo debe ser: dia, semana o mes' 
@@ -315,7 +314,7 @@ export const procesarExcelComparativa = async (req: Request, res: Response) => {
         // 1. GUARDAR REGISTROS DEL EXCEL (MEJORADO con manejo de errores por lote)
         const registrosParaGuardar = datosValidos.map(row => ({
             periodo: periodo,
-            tipoPeriodo: tipoPeriodo,
+            tipoPeriodo: tipo || 'mes',
             fechaAlbaran: row.fechaAlbaran || '',
             clienteNombre: row.clienteNombre.trim(),
             totalImporte: row.totalImporte || 0,
@@ -353,13 +352,13 @@ export const procesarExcelComparativa = async (req: Request, res: Response) => {
 
                 if (cliente) {
                     // OBTENER DEUDA DEL PERÍODO ANTERIOR para comparativa
-                    const periodoAnterior = obtenerPeriodoAnterior(periodo, tipoPeriodo);
+                    const periodoAnterior = obtenerPeriodoAnterior(periodo, tipo || 'mes');
                     
                     // Buscar registros del período anterior para este cliente
                     const registroAnterior = await RegistroExcel.findOne({
                         clienteNombre: { $regex: new RegExp(`^${nombreCliente}$`, 'i') },
                         periodo: periodoAnterior,
-                        tipoPeriodo: tipoPeriodo
+                        tipoPeriodo: tipo || 'mes'
                     }).sort({ fechaProcesamiento: -1 });
 
                     const deudaAnterior = registroAnterior?.deuda || cliente.saldoActual;
@@ -418,15 +417,15 @@ export const procesarExcelComparativa = async (req: Request, res: Response) => {
             clientesActualizados,
             clientesCreados,
             periodo,
-            tipoPeriodo
+            tipoPeriodo: tipo || 'mes'
         });
 
         res.status(200).json({
             success: true,
-            message: `Comparativa ${tipoPeriodo} procesada exitosamente`,
+            message: `Comparativa ${tipo} procesada exitosamente`,
             datosProcesados: datosValidos.length,
             periodo: periodo,
-            tipoPeriodo: tipoPeriodo,
+            tipoPeriodo: tipo,
             estadisticas: {
                 registrosExcelGuardados: registrosGuardados,
                 clientesActualizados: clientesActualizados,
@@ -683,4 +682,202 @@ export const getTendencias = async (req: Request, res: Response) => {
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener tendencias' });
     }
+};
+
+// Obtener deudas por período
+export const getDeudasPorPeriodo = async (req: Request, res: Response) => {
+    try {
+        const { periodo, tipo } = req.query;
+
+        if (!periodo || !tipo) {
+            return res.status(400).json({
+                success: false,
+                error: 'Los parámetros periodo y tipo son requeridos'
+            });
+        }
+
+        // SOLUCIÓN: Separar la promesa
+        const registrosPromise = RegistroExcel.find({ 
+            periodo: periodo,
+            tipoPeriodo: tipo 
+        }).lean().exec();
+
+        const registros = await registrosPromise;
+
+        // Agrupar por cliente
+        const deudasPorCliente: Record<string, any> = {};
+        
+        registros.forEach((registro: any) => {
+            const clienteNombre = registro.clienteNombre;
+            
+            if (!deudasPorCliente[clienteNombre]) {
+                deudasPorCliente[clienteNombre] = {
+                    clienteId: registro._id ? registro._id.toString() : clienteNombre,
+                    clienteNombre: clienteNombre,
+                    deudaTotal: 0,
+                    registros: []
+                };
+            }
+            
+            deudasPorCliente[clienteNombre].deudaTotal += registro.deuda || 0;
+            deudasPorCliente[clienteNombre].registros.push({
+                fechaAlbaran: registro.fechaAlbaran,
+                totalImporte: registro.totalImporte || 0,
+                cobradoLinea: registro.cobradoLinea || 0,
+                deuda: registro.deuda || 0,
+                paciente: registro.paciente,
+                etiqueta: registro.etiqueta
+            });
+        });
+
+        const resultado = Object.values(deudasPorCliente);
+
+        // Calcular total de deuda usando función auxiliar
+        const totalDeuda = calculateTotalDeuda(registros);
+
+        res.json({
+            success: true,
+            periodo,
+            tipo,
+            totalRegistros: registros.length,
+            totalClientes: resultado.length,
+            totalDeuda: totalDeuda,
+            deudas: resultado
+        });
+
+    } catch (error) {
+        console.error('Error en getDeudasPorPeriodo:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor al obtener deudas por período'
+        });
+    }
+};
+
+// Obtener resumen comparativo
+export const getResumenComparativo = async (req: Request, res: Response) => {
+    try {
+        const { tipo, fecha } = req.query;
+
+        if (!tipo) {
+            return res.status(400).json({
+                success: false,
+                error: 'El parámetro tipo es requerido'
+            });
+        }
+
+        // Determinar período actual
+        const fechaActual = fecha ? new Date(fecha as string) : new Date();
+        let periodoActual = '';
+        let periodoAnterior = '';
+
+        // Usar la función existente obtenerPeriodoAnterior
+        const periodoActualStr = obtenerPeriodoActual(fechaActual, tipo as string);
+        const periodoAnteriorStr = obtenerPeriodoAnterior(periodoActualStr, tipo as string);
+        
+        periodoActual = periodoActualStr;
+        periodoAnterior = periodoAnteriorStr;
+
+        // SOLUCIÓN: Separar las consultas para evitar problemas de tipos
+        const registrosActualPromise = RegistroExcel.find({ 
+            periodo: periodoActual,
+            tipoPeriodo: tipo 
+        }).lean().exec();
+
+        const registrosAnteriorPromise = RegistroExcel.find({ 
+            periodo: periodoAnterior,
+            tipoPeriodo: tipo 
+        }).lean().exec();
+
+        // Ejecutar por separado
+        const registrosActual = await registrosActualPromise;
+        const registrosAnterior = await registrosAnteriorPromise;
+
+        // Calcular totales de forma segura con tipos explícitos
+        const totalDeudaActual = calculateTotalDeuda(registrosActual);
+        const totalDeudaAnterior = calculateTotalDeuda(registrosAnterior);
+        
+        const totalVariacion = totalDeudaActual - totalDeudaAnterior;
+        const totalPorcentajeVariacion = totalDeudaAnterior > 0 
+            ? (totalVariacion / totalDeudaAnterior) * 100 
+            : (totalVariacion > 0 ? 100 : 0);
+
+        // Contar clientes únicos
+        const clientesActual = getUniqueClients(registrosActual);
+        const clientesAnterior = getUniqueClients(registrosAnterior);
+
+        res.json({
+            success: true,
+            periodoActual,
+            periodoAnterior,
+            tipo,
+            totalDeudaActual,
+            totalDeudaAnterior,
+            totalVariacion,
+            totalPorcentajeVariacion,
+            totalClientesActual: clientesActual.size,
+            totalClientesAnterior: clientesAnterior.size,
+            totalRegistrosActual: registrosActual.length,
+            totalRegistrosAnterior: registrosAnterior.length
+        });
+
+    } catch (error) {
+        console.error('Error en getResumenComparativo:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor al obtener resumen comparativo'
+        });
+    }
+};
+
+// Función auxiliar para calcular total de deuda
+const calculateTotalDeuda = (registros: any[]): number => {
+    return registros.reduce((sum: number, r: any) => {
+        return sum + (r.deuda || 0);
+    }, 0);
+};
+
+// Función auxiliar para obtener clientes únicos
+const getUniqueClients = (registros: any[]): Set<string> => {
+    const clientes = new Set<string>();
+    registros.forEach((r: any) => {
+        if (r.clienteNombre) {
+            clientes.add(r.clienteNombre);
+        }
+    });
+    return clientes;
+};
+
+// Función auxiliar para obtener período actual
+const obtenerPeriodoActual = (fecha: Date, tipoPeriodo: string): string => {
+    switch (tipoPeriodo) {
+        case 'dia':
+            const dia = fecha.getDate().toString().padStart(2, '0');
+            const mesDia = (fecha.getMonth() + 1).toString().padStart(2, '0');
+            const anioDia = fecha.getFullYear();
+            return `${anioDia}-${mesDia}-${dia}`;
+            
+        case 'semana':
+            return getISOWeek(fecha);
+            
+        case 'mes':
+        default:
+            const mes = (fecha.getMonth() + 1).toString().padStart(2, '0');
+            const anio = fecha.getFullYear();
+            return `${anio}-${mes}`;
+    }
+};
+
+// Función para calcular semana ISO
+const getISOWeek = (date: Date): string => {
+    const target = new Date(date.valueOf());
+    const dayNr = (date.getDay() + 6) % 7;
+    target.setDate(target.getDate() - dayNr + 3);
+    const firstThursday = target.valueOf();
+    target.setMonth(0, 1);
+    if (target.getDay() !== 4) {
+        target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+    }
+    const weekNum = 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
+    return `${date.getFullYear()}-W${weekNum.toString().padStart(2, '0')}`;
 };

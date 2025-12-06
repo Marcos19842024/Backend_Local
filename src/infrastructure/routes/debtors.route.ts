@@ -13,6 +13,8 @@ import {
     searchClientes,
     getPeriodosDisponibles,
     getComparativaPorPeriodo,
+    getDeudasPorPeriodo,
+    getResumenComparativo
 } from '../controller/debtorsController';
 
 const router = Router();
@@ -35,5 +37,12 @@ router.get('/comparativa-periodo', getComparativaPorPeriodo);
 router.get('/historial/:clienteId', getHistorialCliente);
 router.get('/registros-excel', getRegistrosExcel);
 router.get('/periodos', getPeriodosDisponibles);
+
+// NUEVAS RUTAS para el frontend
+router.get('/deudas/por-periodo', getDeudasPorPeriodo);
+router.get('/deudas/comparativa', getComparativaPorPeriodo);
+router.get('/deudas/resumen-comparativo', getResumenComparativo);
+router.post('/deudas/procesar-excel-comparativa', procesarExcelComparativa);
+router.get('/deudas/historial/:clienteId', getHistorialCliente);
 
 export { router };
