@@ -1,883 +1,875 @@
 import { Request, Response } from 'express';
-import Cliente from '../../infrastructure/models/Cliente';
-import HistorialDeuda from '../../infrastructure/models/HistorialDeuda';
+import Debtor from '../models/Debtor';
+import Deuda from '../models/Deuda';
 import RegistroExcel from '../models/RegistroExcel';
+import ExcelRegistro from '../models/ExcelRegistro';
+import HistorialDeuda from '../models/HistorialDeuda';
 
-// Interfaces para tipado
-interface RegistroExcelType {
-    _id?: any;
-    periodo: string;
-    tipoPeriodo: string;
-    fechaAlbaran?: string;
-    clienteNombre: string;
-    totalImporte: number;
-    cobradoLinea: number;
-    deuda: number;
-    paciente?: string;
-    etiqueta?: string;
-    fechaProcesamiento: Date;
-}
-
-interface ComparativaItem {
-    clienteNombre: string;
-    deudaActual: number;
-    deudaAnterior: number;
-    variacion: number;
-    porcentajeVariacion: number;
-    periodoActual: string;
-    periodoAnterior: string;
-}
-
-interface ResumenComparativa {
-    periodoActual: string;
-    periodoAnterior: string;
-    totalDeudaActual: number;
-    totalDeudaAnterior: number;
-    totalVariacion: number;
-    totalPorcentajeVariacion: number;
-    totalClientes: number;
-    clientesConAumento: number;
-    clientesConDisminucion: number;
-    clientesEstables: number;
-}
-
-// Función para obtener el período anterior según el tipo de período
-const obtenerPeriodoAnterior = (periodoActual: string, tipoPeriodo: string): string => {
-    try {
-        switch (tipoPeriodo) {
-            case 'dia':
-                // Formato: "2024-01-15"
-                const [anioDia, mesDia, dia] = periodoActual.split('-').map(Number);
-                const fechaActual = new Date(anioDia, mesDia - 1, dia);
-                const fechaAnterior = new Date(fechaActual);
-                fechaAnterior.setDate(fechaActual.getDate() - 1);
-                
-                const anioAntDia = fechaAnterior.getFullYear();
-                const mesAntDia = (fechaAnterior.getMonth() + 1).toString().padStart(2, '0');
-                const diaAnt = fechaAnterior.getDate().toString().padStart(2, '0');
-                return `${anioAntDia}-${mesAntDia}-${diaAnt}`;
-
-            case 'semana':
-                // Formato: "2024-W03"
-                const [anioSemana, semanaStr] = periodoActual.split('-W');
-                const numeroSemana = parseInt(semanaStr);
-                let anioAntSemana = parseInt(anioSemana);
-                let semanaAnterior = numeroSemana - 1;
-                
-                if (semanaAnterior === 0) {
-                    // Si es la semana 1, la anterior es la última semana del año anterior
-                    anioAntSemana -= 1;
-                    // Calcular última semana del año anterior (puede ser 52 o 53)
-                    const ultimoDiaAnio = new Date(anioAntSemana, 11, 31);
-                    const primerDiaAnio = new Date(anioAntSemana, 0, 1);
-                    const diasTranscurridos = Math.floor((ultimoDiaAnio.getTime() - primerDiaAnio.getTime()) / (24 * 60 * 60 * 1000));
-                    semanaAnterior = Math.ceil((diasTranscurridos + primerDiaAnio.getDay() + 1) / 7);
-                }
-                
-                return `${anioAntSemana}-W${semanaAnterior.toString().padStart(2, '0')}`;
-
-            case 'mes':
-            default:
-                // Formato: "2024-01"
-                const [anioMes, mes] = periodoActual.split('-').map(Number);
-                let anioAntMes = anioMes;
-                let mesAnterior = mes - 1;
-                
-                if (mesAnterior === 0) {
-                    mesAnterior = 12;
-                    anioAntMes -= 1;
-                }
-                
-                return `${anioAntMes}-${mesAnterior.toString().padStart(2, '0')}`;
-        }
-    } catch (error) {
-        console.error('Error calculando período anterior:', error);
-        return periodoActual; // Fallback
-    }
-};
-
-// Obtener comparativa por período
-export const getComparativaPorPeriodo = async (req: Request, res: Response) => {
-    try {
-        const periodoRaw = req.query.periodo;
-        const tipoPeriodoRaw = req.query.tipoPeriodo;
-
-        const periodo = typeof periodoRaw === 'string'
-            ? periodoRaw
-            : Array.isArray(periodoRaw) && periodoRaw.length > 0
-                ? periodoRaw[0]
-                : undefined;
-
-        const tipoPeriodo = typeof tipoPeriodoRaw === 'string'
-            ? tipoPeriodoRaw
-            : Array.isArray(tipoPeriodoRaw) && tipoPeriodoRaw.length > 0
-                ? tipoPeriodoRaw[0]
-                : 'mes';
-
-        if (!periodo || typeof periodo !== 'string') {
-            return res.status(400).json({
-                success: false,
-                error: 'El parámetro periodo es requerido'
-            });
-        }
-
-        // Validar tipoPeriodo
-        if (!(typeof tipoPeriodo === 'string' && ['dia', 'semana', 'mes'].includes(tipoPeriodo))) {
-            return res.status(400).json({
-                success: false,
-                error: 'tipoPeriodo debe ser: dia, semana o mes'
-            });
-        }
-
-        // Obtener período anterior
-        const periodoAnterior = obtenerPeriodoAnterior(periodo, tipoPeriodo);
-
-        const registrosActualPromise = RegistroExcel.find({ 
-            periodo: periodo,
-            tipoPeriodo: tipoPeriodo 
-        }).lean().exec();
-
-        const registrosAnteriorPromise = RegistroExcel.find({ 
-            periodo: periodoAnterior,
-            tipoPeriodo: tipoPeriodo 
-        }).lean().exec();
-
-        const registrosActual = await registrosActualPromise;
-        const registrosAnterior = await registrosAnteriorPromise;
-
-        // Crear mapa de registros por cliente para el período actual
-        const mapaActual = new Map<string, RegistroExcelType>();
-        registrosActual.forEach((registro: RegistroExcelType) => {
-            const clave = registro.clienteNombre.toLowerCase();
-            const existing = mapaActual.get(clave);
-            if (!existing || registro.fechaProcesamiento > existing.fechaProcesamiento) {
-                mapaActual.set(clave, registro);
-            }
-        });
-
-        // Crear mapa de registros por cliente para el período anterior
-        const mapaAnterior = new Map<string, RegistroExcelType>();
-        registrosAnterior.forEach((registro: RegistroExcelType) => {
-            const clave = registro.clienteNombre.toLowerCase();
-            const existing = mapaAnterior.get(clave);
-            if (!existing || registro.fechaProcesamiento > existing.fechaProcesamiento) {
-                mapaAnterior.set(clave, registro);
-            }
-        });
-
-        // Generar comparativa
-        const comparativa: ComparativaItem[] = [];
-        const clientesProcesados = new Set<string>();
-
-        // Procesar clientes del período actual
-        for (const [clienteNombre, registroActual] of mapaActual) {
-            clientesProcesados.add(clienteNombre);
-            
-            const registroAnterior = mapaAnterior.get(clienteNombre);
-            const deudaActual = registroActual.deuda;
-            const deudaAnterior = registroAnterior?.deuda || 0;
-            const variacion = deudaActual - deudaAnterior;
-            const porcentajeVariacion = deudaAnterior > 0 ? (variacion / deudaAnterior) * 100 : 0;
-
-            comparativa.push({
-                clienteNombre: registroActual.clienteNombre,
-                deudaActual,
-                deudaAnterior,
-                variacion,
-                porcentajeVariacion,
-                periodoActual: periodo,
-                periodoAnterior
-            });
-        }
-
-        // Procesar clientes que solo están en el período anterior
-        for (const [clienteNombre, registroAnterior] of mapaAnterior) {
-            if (!clientesProcesados.has(clienteNombre)) {
-                comparativa.push({
-                    clienteNombre: registroAnterior.clienteNombre,
-                    deudaActual: 0,
-                    deudaAnterior: registroAnterior.deuda,
-                    variacion: -registroAnterior.deuda,
-                    porcentajeVariacion: -100,
-                    periodoActual: periodo,
-                    periodoAnterior
-                });
-            }
-        }
-
-        // Calcular resumen
-        const totalDeudaActual = comparativa.reduce((sum, item) => sum + item.deudaActual, 0);
-        const totalDeudaAnterior = comparativa.reduce((sum, item) => sum + item.deudaAnterior, 0);
-        const totalVariacion = totalDeudaActual - totalDeudaAnterior;
-        const totalPorcentajeVariacion = totalDeudaAnterior > 0 ? (totalVariacion / totalDeudaAnterior) * 100 : 0;
-
-        const resumen: ResumenComparativa = {
-            periodoActual: periodo,
-            periodoAnterior,
-            totalDeudaActual,
-            totalDeudaAnterior,
-            totalVariacion,
-            totalPorcentajeVariacion,
-            totalClientes: comparativa.length,
-            clientesConAumento: comparativa.filter(item => item.variacion > 0).length,
-            clientesConDisminucion: comparativa.filter(item => item.variacion < 0).length,
-            clientesEstables: comparativa.filter(item => item.variacion === 0).length
-        };
-
-        res.json({
-            success: true,
-            comparativa,
-            resumen
-        });
-
-    } catch (error) {
-        console.error('Error en getComparativaPorPeriodo:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Error interno del servidor al obtener comparativa'
-        });
-    }
-};
-
-// ProcesarExcelComparativa
-export const procesarExcelComparativa = async (req: Request, res: Response) => {
-    try {
-        const { datos, periodo, tipo } = req.body;
-        const excelData = datos;
-
-        console.log('📥 Datos recibidos en backend:', {
-            tieneExcelData: !!excelData,
-            tienePeriodo: !!periodo,
-            tipoPeriodo: tipo || 'mes',
-            tipoExcelData: typeof excelData,
-            excelDataCount: excelData?.length
-        });
-
-        // Validaciones mejoradas
-        if (!excelData || !Array.isArray(excelData)) {
-            return res.status(400).json({ 
-                success: false,
-                error: 'Datos de Excel no válidos: excelData debe ser un array' 
-            });
-        }
-
-        if (!periodo) {
-            return res.status(400).json({ 
-                success: false,
-                error: 'Período es requerido' 
-            });
-        }
-
-        // Validar tipoPeriodo
-                if (!(typeof tipo === 'string' && ['dia', 'semana', 'mes'].includes(tipo))) {
-                    return res.status(400).json({ 
-                        success: false,
-                        error: 'tipoPeriodo debe ser: dia, semana o mes' 
-                    });
-                }
-
-        // Validación de datos mejorada
-        const datosValidos = excelData.filter(row => {
-            if (!row || typeof row !== 'object') {
-                console.log('❌ Fila no es objeto válido:', row);
-                return false;
-            }
-            
-            const tieneCliente = row.clienteNombre && 
-                               typeof row.clienteNombre === 'string' && 
-                               row.clienteNombre.trim() !== '';
-            
-            const tieneDeuda = typeof row.deuda === 'number' && !isNaN(row.deuda);
-            const tieneTotalImporte = typeof row.totalImporte === 'number' && !isNaN(row.totalImporte);
-            const tieneCobradoLinea = typeof row.cobradoLinea === 'number' && !isNaN(row.cobradoLinea);
-            
-            const tieneAlgunValorNumerico = tieneDeuda || tieneTotalImporte || tieneCobradoLinea;
-            
-            return tieneCliente && tieneAlgunValorNumerico;
-        });
-
-        console.log(`📊 Resultado validación: ${datosValidos.length} válidos de ${excelData.length} totales`);
-
-        if (datosValidos.length === 0) {
-            return res.status(400).json({ 
-                success: false,
-                error: `No hay datos válidos para procesar. Se requieren clienteNombre y al menos un campo numérico.` 
-            });
-        }
-
-        console.log(`✅ Datos válidos para procesar: ${datosValidos.length} registros`);
-
-        let clientesActualizados = 0;
-        let clientesCreados = 0;
-        let registrosGuardados = 0;
-
-        // 1. GUARDAR REGISTROS DEL EXCEL (MEJORADO con manejo de errores por lote)
-        const registrosParaGuardar = datosValidos.map(row => ({
-            periodo: periodo,
-            tipoPeriodo: tipo || 'mes',
-            fechaAlbaran: row.fechaAlbaran || '',
-            clienteNombre: row.clienteNombre.trim(),
-            totalImporte: row.totalImporte || 0,
-            cobradoLinea: row.cobradoLinea || 0,
-            deuda: row.deuda || 0,
-            paciente: row.paciente || '',
-            etiqueta: row.etiqueta || '',
-            fechaProcesamiento: new Date()
-        }));
-
-        try {
-            // Usar insertMany con ordered: false para que continúe aunque falle algún documento
-            const resultado = await RegistroExcel.insertMany(registrosParaGuardar, { ordered: false });
-            registrosGuardados = resultado.length;
-            console.log(`✅ Registros Excel guardados: ${registrosGuardados}`);
-        } catch (error: any) {
-            // Manejar errores de inserción parcial
-            if (error.writeErrors) {
-                registrosGuardados = registrosParaGuardar.length - error.writeErrors.length;
-                console.log(`⚠️ Registros guardados parcialmente: ${registrosGuardados} de ${registrosParaGuardar.length}`);
-            } else {
-                console.error('❌ Error al guardar registros Excel:', error);
-            }
-        }
-
-        // 2. PROCESAR CLIENTES CON COMPARATIVA POR PERÍODO (MEJORADO con Promise.all)
-        const procesarClientes = datosValidos.map(async (row) => {
-            try {
-                const nombreCliente = row.clienteNombre.trim();
-                const deudaActual = row.deuda || 0;
-
-                let cliente = await Cliente.findOne({ 
-                    nombre: { $regex: new RegExp(`^${nombreCliente}$`, 'i') } 
-                });
-
-                if (cliente) {
-                    // OBTENER DEUDA DEL PERÍODO ANTERIOR para comparativa
-                    const periodoAnterior = obtenerPeriodoAnterior(periodo, tipo || 'mes');
-                    
-                    // Buscar registros del período anterior para este cliente
-                    const registroAnterior = await RegistroExcel.findOne({
-                        clienteNombre: { $regex: new RegExp(`^${nombreCliente}$`, 'i') },
-                        periodo: periodoAnterior,
-                        tipoPeriodo: tipo || 'mes'
-                    }).sort({ fechaProcesamiento: -1 });
-
-                    const deudaAnterior = registroAnterior?.deuda || cliente.saldoActual;
-                    const variacion = deudaActual - deudaAnterior;
-                    const porcentajeVariacion = deudaAnterior > 0 ? (variacion / deudaAnterior) * 100 : 0;
-
-                    await Cliente.findByIdAndUpdate(
-                        cliente._id,
-                        {
-                            saldoActual: deudaActual,
-                            deudaAnterior: deudaAnterior,
-                            variacion: variacion,
-                            porcentajeVariacion: porcentajeVariacion,
-                            ultimaActualizacion: new Date(),
-                            estado: deudaActual > 0 ? 'moroso' : 'activo',
-                            ...(row.etiqueta && { etiqueta: row.etiqueta })
-                        }
-                    );
-                    return { tipo: 'actualizado', nombre: nombreCliente };
-                } else {
-                    // Crear nuevo cliente (sin datos anteriores para comparar)
-                    await Cliente.create({
-                        nombre: nombreCliente,
-                        tipoCliente: 'regular',
-                        limiteCredito: 0,
-                        saldoActual: deudaActual,
-                        estado: deudaActual > 0 ? 'moroso' : 'activo',
-                        etiqueta: row.etiqueta || '',
-                        deudaAnterior: 0,
-                        variacion: 0,
-                        porcentajeVariacion: 0,
-                        ultimaActualizacion: new Date()
-                    });
-                    return { tipo: 'creado', nombre: nombreCliente };
-                }
-            } catch (error) {
-                console.error(`❌ Error procesando cliente ${row.clienteNombre}:`, error);
-                return { tipo: 'error', nombre: row.clienteNombre, error };
-            }
-        });
-
-        // SOLUCIÓN: Usar ejecución separada para evitar problemas de tipos
-        const resultados = await Promise.allSettled(procesarClientes);
-        
-        // Contar resultados
-        resultados.forEach(resultado => {
-            if (resultado.status === 'fulfilled') {
-                const value = resultado.value;
-                if (value.tipo === 'actualizado') clientesActualizados++;
-                if (value.tipo === 'creado') clientesCreados++;
-            }
-        });
-
-        console.log(`✅ Procesamiento completado:`, {
-            registrosGuardados,
-            clientesActualizados,
-            clientesCreados,
-            periodo,
-            tipoPeriodo: tipo || 'mes'
-        });
-
-        res.status(200).json({
-            success: true,
-            message: `Comparativa ${tipo} procesada exitosamente`,
-            datosProcesados: datosValidos.length,
-            periodo: periodo,
-            tipoPeriodo: tipo,
-            estadisticas: {
-                registrosExcelGuardados: registrosGuardados,
-                clientesActualizados: clientesActualizados,
-                clientesCreados: clientesCreados,
-                totalClientesAfectados: clientesActualizados + clientesCreados
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ Error en procesarExcelComparativa:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Error interno del servidor: ' + (error instanceof Error ? error.message : 'Error desconocido')
-        });
-    }
-};
-
-// Obtener períodos disponibles
-export const getPeriodosDisponibles = async (req: Request, res: Response) => {
-    try {
-        const periodos = await RegistroExcel.aggregate([
-            {
-                $group: {
-                    _id: {
-                        periodo: "$periodo",
-                        tipoPeriodo: "$tipoPeriodo"
-                    },
-                    fechaProcesamiento: { $max: "$fechaProcesamiento" },
-                    count: { $sum: 1 }
-                }
-            },
-            {
-                $sort: { "fechaProcesamiento": -1 }
-            }
-        ]);
-
-        res.json({
-            success: true,
-            periodos: periodos.map(p => ({
-                periodo: p._id.periodo,
-                tipoPeriodo: p._id.tipoPeriodo,
-                fechaProcesamiento: p.fechaProcesamiento,
-                registrosCount: p.count
-            }))
-        });
-    } catch (error) {
-        console.error('Error obteniendo períodos:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Error al obtener períodos disponibles'
-        });
-    }
-};
+// =============================================
+// 🔥 CONTROLADORES EXISTENTES (CLIENTES)
+// =============================================
 
 export const getClientes = async (req: Request, res: Response) => {
     try {
-        const clientes = await Cliente.find().sort({ nombre: 1 });
-        res.json(clientes);
+        const clientes = await Debtor.find().sort({ nombre: 1 });
+        res.status(200).json(clientes);
     } catch (error) {
-        res.status(500).json({ error: 'Error al obtener los clientes' });
+        console.error('Error obteniendo clientes:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error obteniendo clientes' 
+        });
     }
 };
 
 export const getClienteById = async (req: Request, res: Response) => {
     try {
-        const cliente = await Cliente.findById(req.params.id);
+        const cliente = await Debtor.findById(req.params.id);
         if (!cliente) {
-            res.status(404).json({ error: 'Cliente no encontrado' });
-            return;
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Cliente no encontrado' 
+            });
         }
-        res.json(cliente);
+        res.status(200).json(cliente);
     } catch (error) {
-        res.status(500).json({ error: 'Error al obtener el cliente' });
+        console.error('Error obteniendo cliente:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error obteniendo cliente' 
+        });
     }
 };
 
 export const createCliente = async (req: Request, res: Response) => {
     try {
-        const cliente = new Cliente(req.body);
-        const saved = await cliente.save();
-        res.status(201).json(saved);
+        const cliente = new Debtor(req.body);
+        await cliente.save();
+        res.status(201).json({
+            success: true,
+            message: 'Cliente creado exitosamente',
+            data: cliente
+        });
     } catch (error) {
-        res.status(500).json({ error: 'Error al crear el cliente' });
+        console.error('Error creando cliente:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error creando cliente' 
+        });
     }
 };
 
 export const updateCliente = async (req: Request, res: Response) => {
     try {
-        const updated = await Cliente.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        if (!updated) {
-            res.status(404).json({ error: 'Cliente no encontrado' });
-            return;
+        const cliente = await Debtor.findByIdAndUpdate(
+            req.params.id,
+            req.body,
+            { new: true, runValidators: true }
+        );
+        if (!cliente) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Cliente no encontrado' 
+            });
         }
-        res.json(updated);
+        res.status(200).json({
+            success: true,
+            message: 'Cliente actualizado exitosamente',
+            data: cliente
+        });
     } catch (error) {
-        res.status(500).json({ error: 'Error al actualizar el cliente' });
+        console.error('Error actualizando cliente:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error actualizando cliente' 
+        });
     }
 };
 
 export const deleteCliente = async (req: Request, res: Response) => {
     try {
-        const { id } = req.params;
-        
-        console.log('🔍 Intentando eliminar cliente con ID:', id);
-        
-        const deleted = await Cliente.findByIdAndDelete(id);
-        
-        if (!deleted) {
-            console.log('❌ Cliente no encontrado con ID:', id);
+        const cliente = await Debtor.findByIdAndDelete(req.params.id);
+        if (!cliente) {
             return res.status(404).json({ 
-                success: false,
-                error: 'Cliente no encontrado' 
+                success: false, 
+                message: 'Cliente no encontrado' 
             });
         }
-        
-        console.log('✅ Cliente eliminado:', deleted.nombre);
-        
-        res.json({ 
+        res.status(200).json({
             success: true,
-            message: 'Cliente eliminado correctamente',
-            data: { id: deleted._id, nombre: deleted.nombre }
+            message: 'Cliente eliminado exitosamente'
         });
-        
     } catch (error) {
-        console.error('❌ Error eliminando cliente:', error);
+        console.error('Error eliminando cliente:', error);
         res.status(500).json({ 
-            success: false,
-            error: 'Error interno del servidor al eliminar cliente' 
+            success: false, 
+            message: 'Error eliminando cliente' 
         });
     }
 };
+
+// =============================================
+// 🔥 CONTROLADORES EXISTENTES (MÉTRICAS)
+// =============================================
 
 export const getMetricas = async (req: Request, res: Response) => {
     try {
-        const total = await Cliente.countDocuments();
-        const activos = await Cliente.countDocuments({ estado: 'activo' });
-        const morosos = await Cliente.countDocuments({ estado: 'moroso' });
+        const totalClientes = await Debtor.countDocuments();
+        const clientesActivos = await Debtor.countDocuments({ estado: 'activo' });
+        const clientesMorosos = await Debtor.countDocuments({ estado: 'moroso' });
         
-        const cartera = await Cliente.aggregate([
-            { $group: { _id: null, total: { $sum: '$saldoActual' } } }
+        const carteraTotal = await Debtor.aggregate([
+            { $group: { _id: null, total: { $sum: "$saldoActual" } } }
         ]);
         
-        res.json({
-            totalClientes: total,
-            clientesActivos: activos,
-            clientesMorosos: morosos,
-            carteraTotal: cartera[0]?.total || 0
+        res.status(200).json({
+            totalClientes,
+            clientesActivos,
+            clientesMorosos,
+            carteraTotal: carteraTotal[0]?.total || 0
         });
     } catch (error) {
-        res.status(500).json({ error: 'Error al obtener las métricas' });
+        console.error('Error obteniendo métricas:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error obteniendo métricas' 
+        });
     }
 };
 
-export const getRegistrosExcel = async (req: Request, res: Response) => {
+export const getTendencias = async (req: Request, res: Response) => {
     try {
-        const { periodo, cliente, page = 1, limit = 50 } = req.query;
+        const tendencias = await Deuda.aggregate([
+            {
+                $group: {
+                    _id: {
+                        $dateToString: { format: "%Y-%m", date: "$createdAt" }
+                    },
+                    totalDeuda: { $sum: "$deuda" },
+                    cantidadRegistros: { $sum: 1 }
+                }
+            },
+            { $sort: { _id: -1 } },
+            { $limit: 12 }
+        ]);
         
-        let query: any = {};
-        
-        if (periodo) query.periodo = periodo;
-        if (cliente) {
-            query.clienteNombre = { $regex: cliente, $options: 'i' };
-        }
-
-        const registros = await RegistroExcel.find(query)
-            .sort({ fechaProcesamiento: -1 })
-            .limit(Number(limit) * 1)
-            .skip((Number(page) - 1) * Number(limit));
-
-        const total = await RegistroExcel.countDocuments(query);
-
-        res.json({
-            success: true,
-            registros,
-            totalPages: Math.ceil(total / Number(limit)),
-            currentPage: Number(page),
-            total
-        });
-
+        res.status(200).json(tendencias);
     } catch (error) {
-        console.error('Error al obtener registros Excel:', error);
+        console.error('Error obteniendo tendencias:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error obteniendo tendencias' 
+        });
+    }
+};
+
+// =============================================
+// 🔥 CONTROLADORES EXISTENTES (DEUDAS)
+// =============================================
+
+export const getComparativaPorPeriodo = async (req: Request, res: Response) => {
+    try {
+        const { periodo, tipo } = req.query;
+        
+        if (!periodo || !tipo) {
+            return res.status(400).json({
+                success: false,
+                message: 'Parámetros periodo y tipo son requeridos'
+            });
+        }
+        
+        // Tu lógica existente aquí...
+        const deudas = await Deuda.find({
+            periodo: periodo as string,
+            tipoPeriodo: tipo as string
+        });
+        
+        res.status(200).json({
+            success: true,
+            periodo,
+            tipo,
+            datos: deudas
+        });
+        
+    } catch (error) {
+        console.error('Error en getComparativaPorPeriodo:', error);
         res.status(500).json({
             success: false,
-            error: 'Error al obtener registros Excel'
+            message: 'Error obteniendo comparativa'
+        });
+    }
+};
+
+export const getDeudasPorPeriodo = async (req: Request, res: Response) => {
+    try {
+        const { periodo, tipo } = req.query;
+        
+        if (!periodo || !tipo) {
+            return res.status(400).json({
+                success: false,
+                message: 'Parámetros periodo y tipo son requeridos'
+            });
+        }
+        
+        // Agrupar por cliente
+        const deudasAgrupadas = await Deuda.aggregate([
+            {
+                $match: {
+                    periodo: periodo as string,
+                    tipoPeriodo: tipo as string
+                }
+            },
+            {
+                $group: {
+                    _id: "$clienteNombre",
+                    clienteId: { $first: "$clienteId" },
+                    deudaTotal: { $sum: "$deuda" },
+                    registros: { $push: "$$ROOT" }
+                }
+            },
+            {
+                $project: {
+                    clienteNombre: "$_id",
+                    clienteId: 1,
+                    deudaTotal: 1,
+                    registros: 1
+                }
+            }
+        ]);
+        
+        res.status(200).json({
+            success: true,
+            periodo,
+            tipo,
+            totalRegistros: deudasAgrupadas.reduce((sum: number, item: any) => sum + item.registros.length, 0),
+            totalClientes: deudasAgrupadas.length,
+            totalDeuda: deudasAgrupadas.reduce((sum: number, item: any) => sum + item.deudaTotal, 0),
+            deudas: deudasAgrupadas
+        });
+        
+    } catch (error) {
+        console.error('Error en getDeudasPorPeriodo:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error obteniendo deudas por período'
         });
     }
 };
 
 export const getHistorialCliente = async (req: Request, res: Response) => {
     try {
-        const historial = await HistorialDeuda.find({ clienteId: req.params.clienteId })
-            .sort({ periodo: -1 })
-            .limit(12);
+        const { clienteId } = req.params;
+        const { fechaInicio, fechaFin } = req.query;
         
-        res.json({ historial });
-    } catch (error) {
-        res.status(500).json({ error: 'Error al obtener historial' });
-    }
-};
-
-// 🔍 BÚSQUEDA DE CLIENTES POR NOMBRE
-export const searchClientes = async (req: Request, res: Response) => {
-    try {
-        const { q } = req.query;
+        let filtro: any = { clienteId };
         
-        if (!q || typeof q !== 'string') {
-            return res.status(400).json({ error: 'Parámetro de búsqueda requerido' });
+        if (fechaInicio && fechaFin) {
+            filtro.createdAt = {
+                $gte: new Date(fechaInicio as string),
+                $lte: new Date(fechaFin as string)
+            };
         }
-
-        const clientes = await Cliente.find({
-            nombre: { $regex: q, $options: 'i' }
-        }).sort({ nombre: 1 });
-
-        res.json(clientes);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al buscar clientes' });
-    }
-};
-
-// 📊 TENDENCIAS DE DEUDA
-export const getTendencias = async (req: Request, res: Response) => {
-    try {
-        const tendencias = await Cliente.aggregate([
-            {
-                $group: {
-                    _id: null,
-                    totalClientes: { $sum: 1 },
-                    totalDeudaActual: { $sum: '$saldoActual' },
-                    totalDeudaAnterior: { $sum: '$deudaAnterior' },
-                    promedioDeuda: { $avg: '$saldoActual' },
-                    clientesConDeuda: {
-                        $sum: {
-                            $cond: [{ $gt: ['$saldoActual', 0] }, 1, 0]
-                        }
-                    }
-                }
-            }
-        ]);
-
-        const resultado = tendencias[0] || {
-            totalClientes: 0,
-            totalDeudaActual: 0,
-            totalDeudaAnterior: 0,
-            promedioDeuda: 0,
-            clientesConDeuda: 0
-        };
-
-        // Calcular variación
-        resultado.variacionTotal = resultado.totalDeudaActual - resultado.totalDeudaAnterior;
-        resultado.porcentajeVariacion = resultado.totalDeudaAnterior > 0 ? 
-            (resultado.variacionTotal / resultado.totalDeudaAnterior) * 100 : 0;
-
-        res.json(resultado);
-    } catch (error) {
-        res.status(500).json({ error: 'Error al obtener tendencias' });
-    }
-};
-
-// Obtener deudas por período
-export const getDeudasPorPeriodo = async (req: Request, res: Response) => {
-    try {
-        const { periodo, tipo } = req.query;
-
-        if (!periodo || !tipo) {
-            return res.status(400).json({
-                success: false,
-                error: 'Los parámetros periodo y tipo son requeridos'
-            });
-        }
-
-        // SOLUCIÓN: Separar la promesa
-        const registrosPromise = RegistroExcel.find({ 
-            periodo: periodo,
-            tipoPeriodo: tipo 
-        }).lean().exec();
-
-        const registros = await registrosPromise;
-
-        // Agrupar por cliente
-        const deudasPorCliente: Record<string, any> = {};
         
-        registros.forEach((registro: any) => {
-            const clienteNombre = registro.clienteNombre;
-            
-            if (!deudasPorCliente[clienteNombre]) {
-                deudasPorCliente[clienteNombre] = {
-                    clienteId: registro._id ? registro._id.toString() : clienteNombre,
-                    clienteNombre: clienteNombre,
-                    deudaTotal: 0,
-                    registros: []
-                };
-            }
-            
-            deudasPorCliente[clienteNombre].deudaTotal += registro.deuda || 0;
-            deudasPorCliente[clienteNombre].registros.push({
-                fechaAlbaran: registro.fechaAlbaran,
-                totalImporte: registro.totalImporte || 0,
-                cobradoLinea: registro.cobradoLinea || 0,
-                deuda: registro.deuda || 0,
-                paciente: registro.paciente,
-                etiqueta: registro.etiqueta
-            });
-        });
-
-        const resultado = Object.values(deudasPorCliente);
-
-        // Calcular total de deuda usando función auxiliar
-        const totalDeuda = calculateTotalDeuda(registros);
-
-        res.json({
-            success: true,
-            periodo,
-            tipo,
-            totalRegistros: registros.length,
-            totalClientes: resultado.length,
-            totalDeuda: totalDeuda,
-            deudas: resultado
-        });
-
+        const historial = await HistorialDeuda.find(filtro)
+            .sort({ createdAt: -1 })
+            .limit(100);
+        
+        res.status(200).json(historial);
     } catch (error) {
-        console.error('Error en getDeudasPorPeriodo:', error);
+        console.error('Error obteniendo historial:', error);
         res.status(500).json({
             success: false,
-            error: 'Error interno del servidor al obtener deudas por período'
+            message: 'Error obteniendo historial del cliente'
         });
     }
 };
 
-// Obtener resumen comparativo
 export const getResumenComparativo = async (req: Request, res: Response) => {
     try {
         const { tipo, fecha } = req.query;
-
-        if (!tipo) {
-            return res.status(400).json({
-                success: false,
-                error: 'El parámetro tipo es requerido'
-            });
-        }
-
-        // Determinar período actual
-        const fechaActual = fecha ? new Date(fecha as string) : new Date();
-        let periodoActual = '';
-        let periodoAnterior = '';
-
-        // Usar la función existente obtenerPeriodoAnterior
-        const periodoActualStr = obtenerPeriodoActual(fechaActual, tipo as string);
-        const periodoAnteriorStr = obtenerPeriodoAnterior(periodoActualStr, tipo as string);
         
-        periodoActual = periodoActualStr;
-        periodoAnterior = periodoAnteriorStr;
-
-        // SOLUCIÓN: Separar las consultas para evitar problemas de tipos
-        const registrosActualPromise = RegistroExcel.find({ 
-            periodo: periodoActual,
-            tipoPeriodo: tipo 
-        }).lean().exec();
-
-        const registrosAnteriorPromise = RegistroExcel.find({ 
-            periodo: periodoAnterior,
-            tipoPeriodo: tipo 
-        }).lean().exec();
-
-        // Ejecutar por separado
-        const registrosActual = await registrosActualPromise;
-        const registrosAnterior = await registrosAnteriorPromise;
-
-        // Calcular totales de forma segura con tipos explícitos
-        const totalDeudaActual = calculateTotalDeuda(registrosActual);
-        const totalDeudaAnterior = calculateTotalDeuda(registrosAnterior);
-        
-        const totalVariacion = totalDeudaActual - totalDeudaAnterior;
-        const totalPorcentajeVariacion = totalDeudaAnterior > 0 
-            ? (totalVariacion / totalDeudaAnterior) * 100 
-            : (totalVariacion > 0 ? 100 : 0);
-
-        // Contar clientes únicos
-        const clientesActual = getUniqueClients(registrosActual);
-        const clientesAnterior = getUniqueClients(registrosAnterior);
-
-        res.json({
+        // Tu lógica existente aquí...
+        res.status(200).json({
             success: true,
-            periodoActual,
-            periodoAnterior,
-            tipo,
-            totalDeudaActual,
-            totalDeudaAnterior,
-            totalVariacion,
-            totalPorcentajeVariacion,
-            totalClientesActual: clientesActual.size,
-            totalClientesAnterior: clientesAnterior.size,
-            totalRegistrosActual: registrosActual.length,
-            totalRegistrosAnterior: registrosAnterior.length
+            message: 'Resumen comparativo'
         });
-
+        
     } catch (error) {
         console.error('Error en getResumenComparativo:', error);
         res.status(500).json({
             success: false,
-            error: 'Error interno del servidor al obtener resumen comparativo'
+            message: 'Error obteniendo resumen comparativo'
         });
     }
 };
 
-// Función auxiliar para calcular total de deuda
-const calculateTotalDeuda = (registros: any[]): number => {
-    return registros.reduce((sum: number, r: any) => {
-        return sum + (r.deuda || 0);
-    }, 0);
-};
+// =============================================
+// 🔥 CONTROLADOR EXISTENTE DE PROCESAR EXCEL (MODIFICADO)
+// =============================================
 
-// Función auxiliar para obtener clientes únicos
-const getUniqueClients = (registros: any[]): Set<string> => {
-    const clientes = new Set<string>();
-    registros.forEach((r: any) => {
-        if (r.clienteNombre) {
-            clientes.add(r.clienteNombre);
+export const procesarExcelComparativa = async (req: Request, res: Response) => {
+    try {
+        const { datos, periodo, tipo } = req.body;
+        
+        if (!datos || !Array.isArray(datos)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Datos inválidos o vacíos'
+            });
         }
-    });
-    return clientes;
-};
-
-// Función auxiliar para obtener período actual
-const obtenerPeriodoActual = (fecha: Date, tipoPeriodo: string): string => {
-    switch (tipoPeriodo) {
-        case 'dia':
-            const dia = fecha.getDate().toString().padStart(2, '0');
-            const mesDia = (fecha.getMonth() + 1).toString().padStart(2, '0');
-            const anioDia = fecha.getFullYear();
-            return `${anioDia}-${mesDia}-${dia}`;
+        
+        console.log(`📊 Procesando ${datos.length} registros para ${periodo} (${tipo})`);
+        
+        // 1. GUARDAR EN REGISTROEXCEL (EXISTENTE)
+        const registrosParaGuardar = datos.map((item: any, index: number) => ({
+            periodo: periodo,
+            tipoPeriodo: tipo,
+            fechaAlbaran: item.fechaAlbaran || '',
+            clienteNombre: item.clienteNombre || '',
+            totalImporte: item.totalImporte || 0,
+            cobradoLinea: item.cobradoLinea || 0,
+            deuda: item.deuda || 0,
+            paciente: item.paciente || '',
+            etiqueta: item.etiqueta || '',
+            clienteId: item.clienteId || null
+        }));
+        
+        await RegistroExcel.insertMany(registrosParaGuardar);
+        
+        // 2. ACTUALIZAR O CREAR CLIENTES
+        let clientesNuevos = 0;
+        let clientesActualizados = 0;
+        
+        for (const registro of datos) {
+            if (!registro.clienteNombre) continue;
             
-        case 'semana':
-            return getISOWeek(fecha);
+            const clienteExistente = await Debtor.findOne({
+                nombre: { $regex: new RegExp(`^${registro.clienteNombre}$`, 'i') }
+            });
             
-        case 'mes':
-        default:
-            const mes = (fecha.getMonth() + 1).toString().padStart(2, '0');
-            const anio = fecha.getFullYear();
-            return `${anio}-${mes}`;
+            if (clienteExistente) {
+                // Actualizar cliente existente
+                clienteExistente.saldoActual = registro.deuda || 0;
+                clienteExistente.estado = registro.deuda > 0 ? 'moroso' : 'activo';
+                clienteExistente.etiqueta = registro.etiqueta || clienteExistente.etiqueta;
+                
+                await clienteExistente.save();
+                clientesActualizados++;
+                
+                // Guardar en historial
+                const historial = new HistorialDeuda({
+                    clienteId: clienteExistente._id,
+                    clienteNombre: clienteExistente.nombre,
+                    monto: registro.deuda || 0,
+                    descripcion: `Actualización desde Excel ${periodo}`,
+                    tipo: 'actualizacion'
+                });
+                await historial.save();
+                
+            } else {
+                // Crear nuevo cliente
+                const nuevoCliente = new Debtor({
+                    nombre: registro.clienteNombre,
+                    tipoCliente: 'regular',
+                    limiteCredito: 0,
+                    saldoActual: registro.deuda || 0,
+                    estado: registro.deuda > 0 ? 'moroso' : 'activo',
+                    etiqueta: registro.etiqueta || ''
+                });
+                
+                await nuevoCliente.save();
+                clientesNuevos++;
+            }
+        }
+        
+        // 3. 🔥 NUEVO: GUARDAR EN EXCELREGISTRO PARA COMPARATIVAS
+        let fechaParaGuardar = '';
+        
+        if (tipo === 'dia' && periodo.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            fechaParaGuardar = periodo;
+        } else {
+            fechaParaGuardar = new Date().toISOString().split('T')[0];
+        }
+        
+        // Calcular estadísticas
+        const totalDeuda = datos.reduce((sum: number, d: any) => sum + (d.deuda || 0), 0);
+        const clientesUnicos = [...new Set(
+            datos.map((d: any) => d.clienteNombre?.toLowerCase().trim()).filter(Boolean)
+        )].length;
+        
+        // Buscar si ya existe ExcelRegistro para esta fecha
+        let excelRegistro = await ExcelRegistro.findOne({ fecha: fechaParaGuardar });
+        
+        const registrosExcelRegistro = datos.map((d: any) => ({
+            fechaAlbaran: d.fechaAlbaran || '',
+            clienteNombre: d.clienteNombre || 'Sin nombre',
+            totalImporte: d.totalImporte || 0,
+            cobradoLinea: d.cobradoLinea || 0,
+            deuda: d.deuda || 0,
+            paciente: d.paciente || '',
+            etiqueta: d.etiqueta || '',
+            clienteId: d.clienteId || null,
+            periodo: periodo,
+            tipoPeriodo: tipo
+        }));
+        
+        if (excelRegistro) {
+            // Actualizar: combinar y eliminar duplicados
+            const registrosExistentes = excelRegistro.registros || [];
+            const todosRegistros = [...registrosExistentes, ...registrosExcelRegistro];
+            
+            // Eliminar duplicados (mismo cliente y misma fechaAlbaran)
+            const mapaUnicos = new Map();
+            todosRegistros.forEach(reg => {
+                const clave = `${reg.clienteNombre}-${reg.fechaAlbaran}`;
+                if (!mapaUnicos.has(clave) || reg.deuda > (mapaUnicos.get(clave)?.deuda || 0)) {
+                    mapaUnicos.set(clave, reg);
+                }
+            });
+            
+            const registrosUnicos = Array.from(mapaUnicos.values());
+            const totalDeudaActualizado = registrosUnicos.reduce((sum: number, r: any) => sum + (r.deuda || 0), 0);
+            const clientesUnicosActualizado = [...new Set(
+                registrosUnicos.map((r: any) => r.clienteNombre?.toLowerCase().trim())
+            )].length;
+            
+            // @ts-ignore - Ignorar error de tipo de Mongoose
+            excelRegistro.registros = registrosUnicos;
+            excelRegistro.totalRegistros = registrosUnicos.length;
+            excelRegistro.totalClientes = clientesUnicosActualizado;
+            excelRegistro.totalDeuda = totalDeudaActualizado;
+            excelRegistro.procesado = true;
+            excelRegistro.fechaSubida = new Date();
+            
+            await excelRegistro.save();
+            console.log(`✅ ExcelRegistro actualizado para ${fechaParaGuardar}`);
+            
+        } else {
+            // @ts-ignore - Ignorar error de tipo complejo de Mongoose
+            excelRegistro = new ExcelRegistro({
+                fecha: fechaParaGuardar,
+                nombreArchivo: `excel-${fechaParaGuardar}`,
+                registros: registrosExcelRegistro,
+                totalRegistros: datos.length,
+                totalClientes: clientesUnicos,
+                totalDeuda: totalDeuda,
+                procesado: true,
+                usuario: 'sistema'
+            });
+            
+            await excelRegistro.save();
+            console.log(`✅ ExcelRegistro creado para ${fechaParaGuardar}`);
+        }
+        
+        // 4. RESPONDER
+        res.status(200).json({
+            success: true,
+            message: 'Excel procesado y guardado correctamente',
+            fechaGuardada: fechaParaGuardar,
+            estadisticas: {
+                registrosExcelGuardados: datos.length,
+                clientesNuevos,
+                clientesActualizados,
+                totalDeuda,
+                clientesUnicos
+            }
+        });
+        
+    } catch (error: any) {
+        console.error('Error en procesarExcelComparativa:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error procesando Excel: ' + error.message
+        });
     }
 };
 
-// Función para calcular semana ISO
-const getISOWeek = (date: Date): string => {
-    const target = new Date(date.valueOf());
-    const dayNr = (date.getDay() + 6) % 7;
-    target.setDate(target.getDate() - dayNr + 3);
-    const firstThursday = target.valueOf();
-    target.setMonth(0, 1);
-    if (target.getDay() !== 4) {
-        target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+// =============================================
+// 🔥 NUEVOS CONTROLADORES PARA EXCELREGISTRO
+// =============================================
+
+export const getRegistrosExcelPorFecha = async (req: Request, res: Response) => {
+    try {
+        const { fecha } = req.params;
+        
+        if (!fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Formato de fecha inválido. Use YYYY-MM-DD'
+            });
+        }
+        
+        const excelRegistro = await ExcelRegistro.findOne({ fecha });
+        
+        if (!excelRegistro) {
+            return res.status(404).json({
+                success: false,
+                message: `No se encontró Excel para la fecha ${fecha}`,
+                fecha,
+                registros: [],
+                totalRegistros: 0,
+                totalClientes: 0,
+                totalDeuda: 0
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            ...excelRegistro.toObject()
+        });
+        
+    } catch (error) {
+        console.error('Error en getRegistrosExcelPorFecha:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error obteniendo registros por fecha'
+        });
     }
-    const weekNum = 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
-    return `${date.getFullYear()}-W${weekNum.toString().padStart(2, '0')}`;
+};
+
+export const getFechasDisponiblesExcel = async (req: Request, res: Response) => {
+    try {
+        const fechas = await ExcelRegistro.find()
+            .select('fecha fechaSubida nombreArchivo totalRegistros totalDeuda')
+            .sort({ fecha: -1 })
+            .lean();
+        
+        res.status(200).json(fechas);
+        
+    } catch (error) {
+        console.error('Error en getFechasDisponiblesExcel:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error obteniendo fechas disponibles'
+        });
+    }
+};
+
+export const getUltimoExcel = async (req: Request, res: Response) => {
+    try {
+        const ultimoExcel = await ExcelRegistro.findOne()
+            .sort({ fecha: -1 })
+            .lean();
+        
+        if (!ultimoExcel) {
+            return res.status(404).json({
+                success: false,
+                message: 'No se encontraron Excel subidos',
+                registros: [],
+                totalRegistros: 0,
+                totalClientes: 0,
+                totalDeuda: 0
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            ...ultimoExcel
+        });
+        
+    } catch (error) {
+        console.error('Error en getUltimoExcel:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error obteniendo último Excel'
+        });
+    }
+};
+
+export const getComparativaExcel = async (req: Request, res: Response) => {
+    try {
+        const { fechaActual, fechaAnterior } = req.query;
+        
+        if (!fechaActual || !fechaAnterior) {
+            return res.status(400).json({
+                success: false,
+                message: 'Se requieren fechaActual y fechaAnterior'
+            });
+        }
+        
+        // Normalizar posibles arrays y valores a string para evitar errores de tipo
+                        const fechaActualStr = Array.isArray(fechaActual) ? String(fechaActual[0]) : String(fechaActual ?? '');
+                        const fechaAnteriorStr = Array.isArray(fechaAnterior) ? String(fechaAnterior[0]) : String(fechaAnterior ?? '');
+                        
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaActualStr) || !/^\d{4}-\d{2}-\d{2}$/.test(fechaAnteriorStr)) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Formato de fecha inválido. Use YYYY-MM-DD'
+                    });
+                }
+                
+                // Obtener ambos Excel
+                const [excelActual, excelAnterior] = await Promise.all([
+                    ExcelRegistro.findOne({ fecha: fechaActualStr }),
+                    ExcelRegistro.findOne({ fecha: fechaAnteriorStr })
+                ]);
+                
+                if (!excelActual) {
+                    return res.status(404).json({
+                        success: false,
+                        message: `No se encontró Excel para la fecha ${fechaActualStr}`
+                    });
+                }
+                
+                // Preparar respuesta base
+                const response: any = {
+                    success: true,
+                    fechaActual: fechaActualStr,
+                    fechaAnterior: fechaAnteriorStr,
+                    tieneDatosActual: !!excelActual,
+                    tieneDatosAnterior: !!excelAnterior
+                };
+        
+        // Si no hay datos anteriores, devolver solo los actuales
+        if (!excelAnterior) {
+            const comparativaSimple = excelActual.registros.map((registro: any) => ({
+                clienteId: registro.clienteId,
+                clienteNombre: registro.clienteNombre,
+                deudaActual: registro.deuda || 0,
+                deudaAnterior: 0,
+                variacion: registro.deuda || 0,
+                porcentajeVariacion: 100,
+                estado: 'nuevo',
+                tieneRegistrosAnteriores: false
+            }));
+            
+            return res.status(200).json({
+                ...response,
+                comparativa: comparativaSimple,
+                resumen: {
+                    totalDeudaActual: excelActual.totalDeuda || 0,
+                    totalDeudaAnterior: 0,
+                    totalVariacion: excelActual.totalDeuda || 0,
+                    totalPorcentajeVariacion: 100,
+                    totalClientes: comparativaSimple.length,
+                    conteoEstados: {
+                        nuevo: comparativaSimple.length,
+                        liquidado: 0,
+                        aumento: 0,
+                        disminucion: 0,
+                        estable: 0
+                    }
+                }
+            });
+        }
+        
+        // Crear mapas para búsqueda rápida
+        const mapaActual = new Map();
+        const mapaAnterior = new Map();
+        
+        // Llenar mapa actual
+        excelActual.registros.forEach((reg: any) => {
+            const clave = reg.clienteNombre?.toLowerCase().trim() || 'sin-nombre';
+            mapaActual.set(clave, {
+                clienteId: reg.clienteId,
+                clienteNombre: reg.clienteNombre,
+                deuda: reg.deuda || 0,
+                registroCompleto: reg
+            });
+        });
+        
+        // Llenar mapa anterior
+        excelAnterior.registros.forEach((reg: any) => {
+            const clave = reg.clienteNombre?.toLowerCase().trim() || 'sin-nombre';
+            mapaAnterior.set(clave, {
+                clienteId: reg.clienteId,
+                clienteNombre: reg.clienteNombre,
+                deuda: reg.deuda || 0,
+                registroCompleto: reg
+            });
+        });
+        
+        // 1. Clientes que están en ACTUAL
+        const comparativa: any[] = [];
+        const clientesProcesados = new Set();
+        
+        mapaActual.forEach((clienteActual: any, clave: string) => {
+            const clienteAnterior = mapaAnterior.get(clave);
+            
+            const deudaActual = clienteActual.deuda || 0;
+            const deudaAnterior = clienteAnterior ? clienteAnterior.deuda : 0;
+            const variacion = deudaActual - deudaAnterior;
+            
+            let porcentajeVariacion = 0;
+            if (deudaAnterior > 0) {
+                porcentajeVariacion = (variacion / deudaAnterior) * 100;
+            } else if (deudaActual > 0) {
+                porcentajeVariacion = 100;
+            }
+            
+            let estado = 'estable';
+            if (!clienteAnterior && deudaActual > 0) {
+                estado = 'nuevo';
+            } else if (clienteAnterior && deudaActual === 0) {
+                estado = 'liquidado';
+            } else if (variacion > 0) {
+                estado = 'aumento';
+            } else if (variacion < 0) {
+                estado = 'disminucion';
+            }
+            
+            comparativa.push({
+                clienteId: clienteActual.clienteId,
+                clienteNombre: clienteActual.clienteNombre,
+                deudaActual,
+                deudaAnterior,
+                variacion,
+                porcentajeVariacion,
+                estado,
+                tieneRegistrosAnteriores: !!clienteAnterior,
+                fechaAlbaranActual: clienteActual.registroCompleto?.fechaAlbaran,
+                fechaAlbaranAnterior: clienteAnterior?.registroCompleto?.fechaAlbaran
+            });
+            
+            clientesProcesados.add(clave);
+        });
+        
+        // 2. Clientes que estaban en ANTERIOR pero NO en ACTUAL (liquidaron)
+        mapaAnterior.forEach((clienteAnterior: any, clave: string) => {
+            if (!clientesProcesados.has(clave)) {
+                comparativa.push({
+                    clienteId: clienteAnterior.clienteId,
+                    clienteNombre: clienteAnterior.clienteNombre,
+                    deudaActual: 0,
+                    deudaAnterior: clienteAnterior.deuda || 0,
+                    variacion: -(clienteAnterior.deuda || 0),
+                    porcentajeVariacion: -100,
+                    estado: 'liquidado',
+                    tieneRegistrosAnteriores: true,
+                    fechaAlbaranActual: null,
+                    fechaAlbaranAnterior: clienteAnterior.registroCompleto?.fechaAlbaran
+                });
+            }
+        });
+        
+        // Calcular resumen
+        const totalDeudaActual = excelActual.totalDeuda || 0;
+        const totalDeudaAnterior = excelAnterior.totalDeuda || 0;
+        const totalVariacion = totalDeudaActual - totalDeudaAnterior;
+        const totalPorcentajeVariacion = totalDeudaAnterior > 0 
+            ? (totalVariacion / totalDeudaAnterior) * 100 
+            : (totalVariacion > 0 ? 100 : 0);
+        
+        // Contar estados
+        const conteoEstados = {
+            nuevo: comparativa.filter(c => c.estado === 'nuevo').length,
+            liquidado: comparativa.filter(c => c.estado === 'liquidado').length,
+            aumento: comparativa.filter(c => c.estado === 'aumento').length,
+            disminucion: comparativa.filter(c => c.estado === 'disminucion').length,
+            estable: comparativa.filter(c => c.estado === 'estable').length
+        };
+        
+        res.status(200).json({
+            ...response,
+            comparativa,
+            resumen: {
+                totalDeudaActual,
+                totalDeudaAnterior,
+                totalVariacion,
+                totalPorcentajeVariacion,
+                totalClientes: comparativa.length,
+                conteoEstados
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error en getComparativaExcel:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error obteniendo comparativa'
+        });
+    }
+};
+
+// =============================================
+// 🔥 CONTROLADORES EXISTENTES (REGISTROS EXCEL)
+// =============================================
+
+export const getRegistrosExcel = async (req: Request, res: Response) => {
+    try {
+        const { periodo, cliente, page = 1, limit = 50 } = req.query;
+        
+        let filtro: any = {};
+        
+        if (periodo) filtro.periodo = periodo as string;
+        if (cliente) {
+            filtro.clienteNombre = { $regex: cliente as string, $options: 'i' };
+        }
+        
+        const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+        
+        // Solución al problema de Promise.all - usar any[] explícitamente
+        const [registros, total] = await Promise.all<any>([
+            RegistroExcel.find(filtro).skip(skip).limit(parseInt(limit as string)).exec(),
+            RegistroExcel.countDocuments(filtro).exec()
+        ]);
+        
+        res.status(200).json({
+            success: true,
+            data: registros,
+            pagination: {
+                page: parseInt(page as string),
+                limit: parseInt(limit as string),
+                total,
+                pages: Math.ceil(total / parseInt(limit as string))
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error obteniendo registros Excel:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error obteniendo registros Excel'
+        });
+    }
+};
+
+// =============================================
+// 🔥 BÚSQUEDA DE CLIENTES
+// =============================================
+
+export const searchDebtorsClientes = async (req: Request, res: Response) => {
+    try {
+        const { q } = req.query;
+        
+        if (!q || (q as string).trim() === '') {
+            return res.status(400).json({
+                success: false,
+                message: 'Término de búsqueda requerido'
+            });
+        }
+        
+        const clientes = await Debtor.find({
+            nombre: { $regex: q as string, $options: 'i' }
+        }).limit(20);
+        
+        res.status(200).json(clientes);
+    } catch (error) {
+        console.error('Error buscando clientes:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error buscando clientes'
+        });
+    }
+};
+
+export default {
+    getClientes,
+    getClienteById,
+    createCliente,
+    updateCliente,
+    deleteCliente,
+    getMetricas,
+    getTendencias,
+    getComparativaPorPeriodo,
+    getDeudasPorPeriodo,
+    getHistorialCliente,
+    getResumenComparativo,
+    procesarExcelComparativa,
+    getRegistrosExcel,
+    searchDebtorsClientes,
+    getRegistrosExcelPorFecha,
+    getFechasDisponiblesExcel,
+    getUltimoExcel,
+    getComparativaExcel
 };

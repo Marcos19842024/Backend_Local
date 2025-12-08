@@ -1,48 +1,50 @@
+import debtorsController from '../controller/debtorsController';
 import { Router } from 'express';
-import {
-    getClientes,
-    getClienteById,
-    createCliente,
-    updateCliente,
-    deleteCliente,
-    getMetricas,
-    procesarExcelComparativa,
-    getHistorialCliente,
-    getTendencias,
-    getRegistrosExcel,
-    searchClientes,
-    getPeriodosDisponibles,
-    getComparativaPorPeriodo,
-    getDeudasPorPeriodo,
-    getResumenComparativo
-} from '../controller/debtorsController';
 
-const router = Router();
+const router: Router = Router();
 
-// Rutas básicas de clientes
-router.get('/clientes', getClientes);
-router.get('/clientes/buscar', searchClientes);
-router.get('/clientes/:id', getClienteById);
-router.post('/clientes', createCliente);
-router.put('/clientes/:id', updateCliente);
-router.delete('/clientes/:id', deleteCliente);
+// =============================================
+// 🔥 RUTAS EXISTENTES
+// =============================================
 
-// Métricas y dashboard
-router.get('/metricas', getMetricas);
-router.get('/tendencias', getTendencias);
+// 👥 CLIENTES
+router.get('/clientes', debtorsController.getClientes);
+router.get('/clientes/:id', debtorsController.getClienteById);
+router.post('/clientes', debtorsController.createCliente);
+router.put('/clientes/:id', debtorsController.updateCliente);
+router.delete('/clientes/:id', debtorsController.deleteCliente);
 
-// Comparativas e historial
-router.post('/procesar-comparativa', procesarExcelComparativa);
-router.get('/comparativa-periodo', getComparativaPorPeriodo);
-router.get('/historial/:clienteId', getHistorialCliente);
-router.get('/registros-excel', getRegistrosExcel);
-router.get('/periodos', getPeriodosDisponibles);
+// 📊 MÉTRICAS
+router.get('/metricas', debtorsController.getMetricas);
+router.get('/tendencias', debtorsController.getTendencias);
 
-// NUEVAS RUTAS para el frontend
-router.get('/deudas/por-periodo', getDeudasPorPeriodo);
-router.get('/deudas/comparativa', getComparativaPorPeriodo);
-router.get('/deudas/resumen-comparativo', getResumenComparativo);
-router.post('/deudas/procesar-excel-comparativa', procesarExcelComparativa);
-router.get('/deudas/historial/:clienteId', getHistorialCliente);
+// 📊 DEUDAS
+router.get('/deudas/comparativa', debtorsController.getComparativaPorPeriodo);
+router.get('/deudas/por-periodo', debtorsController.getDeudasPorPeriodo);
+router.get('/deudas/historial/:clienteId', debtorsController.getHistorialCliente);
+router.post('/deudas/procesar-excel-comparativa', debtorsController.procesarExcelComparativa);
+router.get('/deudas/resumen-comparativo', debtorsController.getResumenComparativo);
+
+// 📄 REGISTROS EXCEL EXISTENTES
+router.get('/registros-excel', debtorsController.getRegistrosExcel);
+
+// 🔍 BÚSQUEDA
+router.get('/clientes/buscar', debtorsController.searchDebtorsClientes);
+
+// =============================================
+// 🔥 NUEVAS RUTAS PARA EXCELREGISTRO
+// =============================================
+
+// Obtener registros de Excel por fecha específica
+router.get('/registros-excel/fecha/:fecha', debtorsController.getRegistrosExcelPorFecha);
+
+// Obtener todas las fechas disponibles de Excel
+router.get('/registros-excel/fechas', debtorsController.getFechasDisponiblesExcel);
+
+// Obtener el último Excel subido
+router.get('/registros-excel/ultimo', debtorsController.getUltimoExcel);
+
+// Obtener comparativa entre dos fechas
+router.get('/registros-excel/comparativa', debtorsController.getComparativaExcel);
 
 export { router };
