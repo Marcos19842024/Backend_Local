@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const router = express.Router();
-const ruta = `${process.cwd()}/tmp/orgchart`
+const ruta = `${process.cwd()}/orgchart`
 const DATA_PATH = path.join(ruta,"orgData.json");
 const rutaBase = path.join(ruta,"employees")
 
