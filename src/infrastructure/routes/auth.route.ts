@@ -12,15 +12,8 @@ router.post('/verify', async (req, res) => {
 
     try {
         const { password } = req.body;
-        let correctPassword = '';
     
-        if (fs.existsSync(backendEnvPath)) {
-            const backendEnvContent = fs.readFileSync(backendEnvPath, 'utf8');
-            
-            // Buscar PASSWORD en el archivo .env
-            const passwordMatch = backendEnvContent.match(/PASSWORD=(.*)/);
-            if (passwordMatch) correctPassword = passwordMatch[1].trim();
-        }
+        const correctPassword = process.env.PASSWORD || '';
         
         if (!password) {
             return res.status(400).json({ 
