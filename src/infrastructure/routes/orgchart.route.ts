@@ -185,18 +185,9 @@ function cleanup(tmpZipPath: string | null) {
 const myDocumentsStorage = multer.diskStorage({
     destination: (req, file, cb) => {
         const folderName = req.params.folderName;
-        const subfolder = req.body.subfolder || ''; // Nueva: soporte para subcarpetas
-        
-        // Mapear los nombres de carpetas a las rutas reales
-        const folderMap = {
-            'contratacion': 'mydocuments/contratacion',
-            'leyes': 'mydocuments/leyes, procedimientos y protocolos',
-            'reportes': 'mydocuments/reportes y memorandums',
-            'router': 'mydocuments/router',
-            'otros': 'mydocuments/otros',
-        };
+        const subfolder = req.body.subfolder || '';
 
-        const actualFolderPath = folderMap[folderName];
+        const actualFolderPath = getFolderPath[folderName];
         if (!actualFolderPath) {
             return cb(new Error('Carpeta no válida'), '');
         }
@@ -326,6 +317,7 @@ const getFolderMap = () => {
         'reportes': 'mydocuments/reportes y memorandums',
         'router': 'mydocuments/router',
         'otros': 'mydocuments/otros',
+        'WenScrapConfort': 'mydocuments/WenScrapConfort'
     };
 };
 
@@ -955,7 +947,8 @@ router.get("/mydocuments", (req, res) => {
                 'leyes, procedimientos y protocolos',
                 'reportes y memorandums',
                 'router',
-                'otros'
+                'otros',
+                'WenScrapConfort'
             ];
             
             subfolders.forEach(folder => {
@@ -1138,10 +1131,6 @@ router.get("/mydocuments/:folderName/files", (req, res) => {
     }
 });
 
-/**
- * Endpoint para inicializar carpetas de MyDocuments
- * http://localhost/orgchart/mydocuments-init GET
- */
 /**
  * Obtener estructura completa de carpetas y archivos para MyDocuments
  * http://localhost/orgchart/mydocuments-structure/:folderName GET
