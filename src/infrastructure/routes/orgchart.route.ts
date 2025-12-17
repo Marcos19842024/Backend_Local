@@ -317,7 +317,7 @@ const getFolderMap = () => {
         'reportes': 'mydocuments/reportes y memorandums',
         'router': 'mydocuments/router',
         'otros': 'mydocuments/otros',
-        'WenScrapConfort': 'mydocuments/WenScrapConfort'
+        'wenScrapConfort': 'mydocuments/wenScrapConfort'
     };
 };
 
@@ -948,7 +948,7 @@ router.get("/mydocuments", (req, res) => {
                 'reportes y memorandums',
                 'router',
                 'otros',
-                'WenScrapConfort'
+                'wenScrapConfort'
             ];
             
             subfolders.forEach(folder => {
