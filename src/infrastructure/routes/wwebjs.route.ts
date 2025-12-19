@@ -103,17 +103,17 @@ router.post("/send/:user/:userid", logMiddleware, leadCtrl.sendCtrl);
  * Cerrar WhatsApp manualmente
  * POST http://localhost/close
  */
-router.post("/close", logMiddleware, async (req, res) => {
-  try {
-    const result = await whatsappInstance.closeWhatsApp();
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({
-      err: true,
-      status: "500",
-      statusText: `Error cerrando WhatsApp: ${error.message}`
-    });
-  }
+router.get("/close", logMiddleware, async (req, res) => {
+    try {
+        const result = await whatsappInstance.closeWhatsApp();
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({
+        err: true,
+        status: "500",
+        statusText: `Error cerrando WhatsApp: ${error.message}`
+        });
+    }
 });
 
 export { router };
