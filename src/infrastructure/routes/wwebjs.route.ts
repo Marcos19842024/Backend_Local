@@ -33,16 +33,16 @@ const fileUpload = multer({
  * POST http://localhost/start
  */
 router.post("/start", logMiddleware, async (req, res) => {
-  try {
-    const result = await whatsappInstance.initializeWhatsApp();
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({
-      err: true,
-      status: "500",
-      statusText: `Error iniciando WhatsApp: ${error.message}`
-    });
-  }
+    try {
+        const result = await whatsappInstance.initializeWhatsApp();
+        res.json(result);
+    } catch (error: any) {
+        res.status(500).json({
+        err: true,
+        status: "500",
+        statusText: `Error iniciando WhatsApp: ${error.message}`
+        });
+    }
 });
 
 /**
@@ -98,5 +98,22 @@ router.delete("/:name", logMiddleware, (req, res, _next) => {
  * http://localhost/send/:user/:userid POST
  */
 router.post("/send/:user/:userid", logMiddleware, leadCtrl.sendCtrl);
+
+/**
+ * Cerrar WhatsApp manualmente
+ * POST http://localhost/close
+ */
+router.post("/close", logMiddleware, async (req, res) => {
+  try {
+    const result = await whatsappInstance.closeWhatsApp();
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({
+      err: true,
+      status: "500",
+      statusText: `Error cerrando WhatsApp: ${error.message}`
+    });
+  }
+});
 
 export { router };

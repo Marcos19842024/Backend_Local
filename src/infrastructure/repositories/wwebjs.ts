@@ -276,6 +276,30 @@ class Ws implements LeadExternal {
     console.log(`⚡ Nuevo QR generado en: ${path}/qr.png`);
     console.log(`⚡ Notificando a clientes conectados...`);
   };
+
+  async closeWhatsApp(): Promise<any> {
+    if (this.cliente) {
+      await this.cliente.logout();
+      await this.cliente.destroy();
+      this.status = false;
+      this.isInitialized = false;
+      this.cliente = null;
+      console.log("🔴 WhatsApp cerrado correctamente");
+      this.notifyStatusUpdate('disconnected', 'WhatsApp cerrado manualmente');
+      return Promise.resolve({
+        err: false,
+        status: "200",
+        statusText: "WhatsApp cerrado correctamente"
+      });
+    } else {
+      console.log("⚠️ No hay una sesión activa de WhatsApp para cerrar");
+      return Promise.resolve({
+        err: true,
+        status: "500",
+        statusText: "No hay una sesión activa de WhatsApp para cerrar"
+      });
+    }
+  }
 }
 
 export default Ws;
