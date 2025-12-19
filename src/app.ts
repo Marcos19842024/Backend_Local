@@ -274,7 +274,7 @@ app.get('/api/config', (req, res) => {
     apiUrl = `https://${clientHost}`;
   } else if (isHTTPS) {
     // Usar HTTPS local
-    apiUrl = `https://${clientHost || getLocalIP()}:${port}`;
+    apiUrl = `https://${clientHost}`;
   }
 
   const config = {
